@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """GQLProbe step tests — one function per PDF step (Steps 1-7) plus
-Step 8 for the stretch items and the beyond-PDF extras.
+Step 8 for the stretch items and the beyond-PDF extras, and Step 9
+for the v1.2 probes (subscriptions, persisted queries, file upload).
 
 Every test touches ONLY the lab API (lab_api.py, stdlib only) on a
 free localhost port. The lab server is started by the tests and shut
@@ -12,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+from collections import Counter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -139,8 +141,9 @@ def step_3(url_vuln):
           "query fields match the lab schema (%s)"
           % ", ".join(sorted(expected_query)))
     check(set(schema["mutation_fields"])
-          == {"ping", "updateProfile", "grantAdmin"},
-          "mutation fields are ping + updateProfile + grantAdmin")
+          == {"ping", "updateProfile", "grantAdmin", "uploadFile"},
+          "mutation fields are ping + updateProfile + grantAdmin + "
+          "uploadFile")
     check(schema["mutation_fields"]["grantAdmin"]["args"]
           == {"userId": "ID"},
           "grantAdmin takes a userId argument")
@@ -286,8 +289,8 @@ def step_7(url_vuln, url_hard):
         check(data["grade"] == ("F" if want_score == 0 else "A"),
               "CLI (%s) JSON grade is %s"
               % (name, "F" if want_score == 0 else "A"))
-        check(len(data["probes"]) == 16,
-              "CLI (%s) JSON has all 16 probes" % name)
+        check(len(data["probes"]) == 19,
+              "CLI (%s) JSON has all 19 probes" % name)
         for pname in gqlprobe.PROBE_NAMES:
             p = data["probes"].get(pname)
             check(p is not None and p.get("verdict")
@@ -417,6 +420,116 @@ def step_8(url_vuln, url_hard, url_part):
           "diff: removed field detected")
 
 
+
+
+# ---------------------------------------------------------------------------
+# Step 9 — v1.2: subscriptions, persisted queries (APQ), file upload,
+# plus the bigger wordlist and the honest fingerprint.
+# ---------------------------------------------------------------------------
+
+def step_9(url_vuln, url_hard, url_part):
+    print("Step 9 — subscriptions, persisted queries, file upload")
+    # The wordlist grew: 1000+ names, no duplicates, lab names in it.
+    words = gqlprobe.load_wordlist(os.path.join(HERE, "wordlist.txt"))
+    check(len(words) >= 1000,
+          "wordlist has 1000+ names (%d)" % len(words))
+    check(len(words) == len(set(words)),
+          "wordlist has no duplicate names")
+    check(all(w in words for w in ("me", "user", "users", "post",
+                                    "posts", "search", "admin")),
+          "wordlist still holds the lab field names")
+    s_v = scan(url_vuln)
+    s_h = scan(url_hard)
+    s_p = scan(url_part)
+    # Subscriptions: vulnerable streams events, hardened refuses both
+    # transports, partial refuses too.
+    check(s_v.probes["subscription"]["verdict"] == "SUPPORTED",
+          "vulnerable: subscription SUPPORTED")
+    check(s_v.probes["subscription"]["details"].get("http") is True,
+          "vulnerable: HTTP subscription returns event data")
+    check(len(findings(s_v, "GQ-017")) == 1,
+          "vulnerable: one GQ-017 finding")
+    check(s_h.probes["subscription"]["verdict"] == "NOT SUPPORTED",
+          "hardened: subscription NOT SUPPORTED")
+    check(s_p.probes["subscription"]["verdict"] == "NOT SUPPORTED",
+          "partial: subscription NOT SUPPORTED")
+    check(not findings(s_h, "GQ-017") and not findings(s_p, "GQ-017"),
+          "hardened + partial: no GQ-017 finding")
+    # Persisted queries (APQ): hash-only -> PersistedQueryNotFound,
+    # hash+query -> registered and executed, on vulnerable only.
+    check(s_v.probes["persisted"]["verdict"] == "SUPPORTED",
+          "vulnerable: persisted queries SUPPORTED")
+    check(s_v.probes["persisted"]["details"].get("registered") is True,
+          "vulnerable: hash+query request registered and executed")
+    check(len(findings(s_v, "GQ-018")) == 1,
+          "vulnerable: one GQ-018 finding")
+    check(s_h.probes["persisted"]["verdict"] == "NOT SUPPORTED",
+          "hardened: persisted queries NOT SUPPORTED")
+    check(s_p.probes["persisted"]["verdict"] == "NOT SUPPORTED",
+          "partial: persisted queries NOT SUPPORTED")
+    check(not findings(s_h, "GQ-018") and not findings(s_p, "GQ-018"),
+          "hardened + partial: no GQ-018 finding")
+    # File upload: the small harmless text file is accepted on
+    # vulnerable only, and the lab reports its name + size.
+    check(s_v.probes["upload"]["verdict"] == "ACCEPTED",
+          "vulnerable: file upload ACCEPTED")
+    check(s_v.probes["upload"]["details"].get("filename")
+          == "lab-test.txt",
+          "vulnerable: upload returned filename lab-test.txt")
+    check(s_v.probes["upload"]["details"].get("size")
+          == len(gqlprobe.Scan.UPLOAD_CONTENT),
+          "vulnerable: upload size matches the sent file")
+    check(len(findings(s_v, "GQ-019")) == 1,
+          "vulnerable: one GQ-019 finding")
+    check(s_h.probes["upload"]["verdict"] == "NOT SUPPORTED",
+          "hardened: file upload NOT SUPPORTED")
+    check(s_p.probes["upload"]["verdict"] == "NOT SUPPORTED",
+          "partial: file upload NOT SUPPORTED")
+    check(not findings(s_h, "GQ-019") and not findings(s_p, "GQ-019"),
+          "hardened + partial: no GQ-019 finding")
+    # Scores did not move: vulnerable was already 0/100, hardened
+    # still 90/100 (only GQ-014), partial still 30/100.
+    counts_v = Counter(f["code"] for f in s_v.findings)
+    check(s_v.score() == 0
+          and len(s_v.findings) - counts_v.get("GQ-012", 0) == 19
+          and counts_v.get("GQ-012", 0) in (0, 1),
+          "vulnerable: 19 findings (16 + 3 new), still 0/100 F "
+          "(GQ-012 timing may add one under load: %d)"
+          % len(s_v.findings))
+    check(s_h.score() == 90 and len(s_h.findings) == 1
+          and len(findings(s_h, "GQ-014")) == 1,
+          "hardened: still 90/100 A, the one finding is still GQ-014")
+    check(s_p.score() == 30 and len(s_p.findings) == 5,
+          "partial: still 30/100 F, 5 findings")
+    # Fingerprint says plainly that it is a best guess.
+    check("best guess" in s_v.probes["fingerprint"]["evidence"].lower(),
+          "fingerprint evidence says it is a best guess only")
+    check("unknown" in s_v.probes["fingerprint"]["verdict"].lower()
+          or "Apollo" in s_v.probes["fingerprint"]["verdict"],
+          "fingerprint still names a family or says unknown")
+    # The schema now lists the subscription type and the upload
+    # mutation, and the lab answers subscriptionType in introspection.
+    check("postAdded" in (s_v.schema.get("subscription_fields") or {}),
+          "schema parsed: subscription field postAdded present")
+    check("uploadFile" in (s_v.schema.get("mutation_fields") or {}),
+          "schema parsed: uploadFile mutation present")
+    # --probe runs one probe only (CLI).
+    out = os.path.join(HERE, "test_report_probe.json")
+    proc = subprocess.run(
+        [sys.executable, os.path.join(HERE, "gqlprobe.py"), url_vuln,
+         "--token", "lab-token-alice", "-o", out, "--json",
+         "--probe", "persisted", "--no-color"],
+        capture_output=True, text=True, timeout=120)
+    check(proc.returncode == 1,
+          "CLI --probe persisted exits 1 (finding on vulnerable)")
+    data = json.loads(open(out, encoding="utf-8").read())
+    check(list(data["probes"]) == ["persisted"],
+          "CLI --probe persisted reports only that probe")
+    check(any(f["code"] == "GQ-018" for f in data["findings"]),
+          "CLI --probe persisted report carries the GQ-018 finding")
+    os.remove(out)
+
+
 def main():
     procs = []
     try:
@@ -432,6 +545,7 @@ def main():
         step_6(url_v)
         step_7(url_v, url_h)
         step_8(url_v, url_h, url_p)
+        step_9(url_v, url_h, url_p)
     finally:
         for proc in procs:
             stop(proc)

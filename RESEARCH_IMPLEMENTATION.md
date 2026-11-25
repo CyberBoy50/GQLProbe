@@ -256,4 +256,6 @@ and the GraphQL-over-HTTP specification.
   GQ-010 schema recoverable via guessing/suggestions, GQ-011 mutation
   without auth, GQ-012 expensive query / timing, GQ-013 sensitive field
   exposed, GQ-014 GET-based queries (CSRF angle), GQ-015 argument
-  injection error leak, GQ-016 no rate limiting observed (Low note).
+  injection error leak, GQ-016 no rate limiting observed (Low note),
+  GQ-017 subscriptions supported, GQ-018 persisted queries accepted
+  (APQ), GQ-019 file upload accepted.

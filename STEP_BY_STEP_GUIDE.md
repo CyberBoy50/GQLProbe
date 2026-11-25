@@ -181,7 +181,7 @@ other.
 
 ## Step 7 — End-to-end, both labs
 
-**Write:** `run()` — all 16 probes in workflow order (timing
+**Write:** `run()` — all 19 probes in workflow order (timing
 last, because its rate-limit check trips the flood guard), then
 the report. Read both saved reports start to finish: every probe
 has a verdict and evidence.
@@ -195,8 +195,8 @@ python3 gqlprobe.py http://127.0.0.1:4000/graphql --token lab-token-alice \
   -o report_hardened.txt --json
 ```
 
-Expected: vulnerable 0/100 F, 16 findings; hardened 90/100 A, 1
-finding (GQ-014, GET). The JSON reports have all 16 probes, the
+Expected: vulnerable 0/100 F, 19 findings; hardened 90/100 A, 1
+finding (GQ-014, GET). The JSON reports have all 19 probes, the
 finding counts add up, and no token appears anywhere.
 
 ## Step 8 — Stretch + extras
@@ -240,5 +240,5 @@ unknown honestly; snapshot + diff detects a changed field list.
 
 ```bash
 python run.py test
-# GQLProbe step tests: 173/173 checks passed
+# GQLProbe step tests: 217/217 checks passed
 ```

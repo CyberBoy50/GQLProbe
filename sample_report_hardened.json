@@ -1,15 +1,16 @@
 {
   "tool": "GQLProbe",
-  "version": "1.1",
+  "version": "1.2",
   "author": "CyberBoy50",
   "disclaimer": "DISCLAIMER \u2014 AUTHORIZED USE ONLY. This tool was built for ethical, authorized security testing only. You are using it on your own responsibility. The authors are not responsible for how you use it, or for anything that happens because of your use. Only test systems, code, and data you own or have explicit written permission to test \u2014 testing anything else may be illegal (for example, PECA 2016 in Pakistan).",
-  "endpoint": "http://127.0.0.1:4001/graphql",
-  "probed": "2026-11-25 19:24:18",
+  "endpoint": "http://127.0.0.1:49765/graphql",
+  "probed": "2026-11-25 19:57:48",
   "token_provided": true,
   "engine": "Apollo-like (error shape) \u2014 lab build (Server header says so)",
   "engine_evidence": [
-    "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0",
-    "error shape: 'Cannot query field ...'"
+    "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.1",
+    "error shape: 'Cannot query field ...'",
+    "best guess only \u2014 error shapes and headers are evidence, never proof of the engine"
   ],
   "score": 90,
   "grade": "A",
@@ -24,7 +25,7 @@
       "code": "GQ-014",
       "name": "GET-based queries (CSRF angle)",
       "severity": "medium",
-      "evidence": "GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4001/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.",
+      "evidence": "GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:49765/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.",
       "fix": "Accept GraphQL only over POST with a JSON body, or require a CSRF token / custom header on GET."
     }
   ],
@@ -178,13 +179,14 @@
     },
     "fingerprint": {
       "verdict": "Apollo-like (error shape) \u2014 lab build (Server header says so)",
-      "evidence": "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0; error shape: 'Cannot query field ...'",
+      "evidence": "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.1; error shape: 'Cannot query field ...'; best guess only \u2014 error shapes and headers are evidence, never proof of the engine",
       "details": {
-        "server": "BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0",
+        "server": "BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.1",
         "powered_by": "",
         "error_shape": [
           "Cannot query field 'usr' on type 'Query'"
-        ]
+        ],
+        "extensions_code": null
       }
     },
     "get": {
@@ -210,33 +212,64 @@
         "leaked": []
       }
     },
+    "subscription": {
+      "verdict": "NOT SUPPORTED",
+      "evidence": "HTTP subscription refused and the websocket upgrade was refused (HTTP 400, not 101).",
+      "details": {
+        "http": false,
+        "websocket": false,
+        "tried": [
+          "postAdded"
+        ],
+        "ws_status": 400
+      }
+    },
+    "persisted": {
+      "verdict": "NOT SUPPORTED",
+      "evidence": "The hash-only request was refused (['Persisted queries are not supported']) \u2014 the server does not speak APQ.",
+      "details": {
+        "hash_only": [
+          "Persisted queries are not supported"
+        ],
+        "status": 200
+      }
+    },
+    "upload": {
+      "verdict": "NOT SUPPORTED",
+      "evidence": "The multipart upload was refused: ['File uploads are not supported']",
+      "details": {
+        "errors": [
+          "File uploads are not supported"
+        ]
+      }
+    },
     "timing": {
       "verdict": "RATE LIMIT PRESENT",
-      "evidence": "Shallow 0.005s, deep 0.000s, 1 vs 100 batch 0.002s vs 0.005s; rate limit kicked in at request 11/20.",
+      "evidence": "Shallow 0.002s, deep 0.000s, 1 vs 100 batch 0.002s vs 0.002s; rate limit kicked in at request 11/20.",
       "details": {
-        "shallow_1": 0.005,
+        "shallow_1": 0.002,
         "deep_5": null,
         "single": 0.002,
-        "batch_100": 0.005,
+        "batch_100": 0.002,
         "rate_limit": "present (first 429 at request 11/20)"
       }
     }
   },
   "timings": {
-    "introspection_authenticated": 0.05,
-    "introspection_anonymous": 0.005,
-    "depth_1": 0.004,
-    "depth_2": 0.004,
-    "depth_3": 0.003,
+    "introspection_authenticated": 0.002,
+    "introspection_anonymous": 0.002,
+    "depth_1": 0.001,
+    "depth_2": 0.001,
+    "depth_3": 0.001,
     "depth_5": 0.002,
     "depth_8": 0.002,
     "batch_10": 0.002,
     "alias": 0.002,
-    "duplication": 0.003,
-    "directive": 0.005,
-    "timing_shallow_1": 0.005,
+    "duplication": 0.002,
+    "directive": 0.001,
+    "timing_shallow_1": 0.002,
     "timing_single": 0.002,
-    "timing_batch_100": 0.005
+    "timing_batch_100": 0.002
   },
   "schema": null,
   "schema_raw": null

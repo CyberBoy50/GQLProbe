@@ -28,7 +28,7 @@ and Linux.
 > three configs — vulnerable, hardened and partial — so you never
 > need a real target to learn the tool.
 
-## The 16 probes
+## The 19 probes
 
 | Code | Probe | What it does |
 |---|---|---|
@@ -41,17 +41,21 @@ and Linux.
 | GQ-007 | Directive overloading | One field with 10 unknown directives |
 | GQ-008 | Field returns data without auth | Replays a data query with no token, field by field against the authenticated response; plus a field-level auth map for every query field |
 | GQ-009 | IDOR / BOLA | With a lab user token, asks `me` for the caller's own id, then requests other users' objects by id |
-| GQ-010 | Schema recoverable via guessing | Curated wordlist (393 common field names, `wordlist.txt`) PLUS Clairvoyance-style suggestion mining: typo a field, read "Did you mean …?" out of the error, feed it back in |
+| GQ-010 | Schema recoverable via guessing | Curated wordlist (1373 common field names, `wordlist.txt`, organised by area) PLUS Clairvoyance-style suggestion mining: typo a field, read "Did you mean …?" out of the error, feed it back in |
 | GQ-011 | Mutation without auth | A HARMLESS lab-only mutation (`ping`, `updateProfile`) run with and without a token; any mutation not on the allow-list is refused |
 | GQ-012 | Expensive query / timing | Per-probe response times (mean of 3 runs), shallow-vs-deep and 1-vs-100-batch timing table |
 | GQ-013 | Sensitive field exposed | Schema fields matching password/secret/token/key/ssn/creditCard/internal/admin, plus a live check: does `passwordHash` come back without a token? |
 | GQ-014 | GET-based queries (CSRF angle) | The same query over GET — if the API ever uses cookie auth, that is a CSRF vector |
 | GQ-015 | Argument injection error leak | SAFE payloads only (a single quote in a string argument); watches for a raw database error in the response |
 | GQ-016 | No rate limiting observed | 20 rapid cheap queries; a 429 (or growing delay) means rate limiting is present — Low note, not a finding |
+| GQ-017 | Subscriptions supported | A subscription operation over plain HTTP, plus a websocket Upgrade (graphql-ws) — a 101 or event data means the stream is live |
+| GQ-018 | Persisted queries accepted (APQ) | Hash-only request (extensions.persistedQuery, no query text), then the same hash WITH the query — PersistedQueryNotFound + execution means APQ is live |
+| GQ-019 | File upload accepted | A small harmless text file sent as multipart/form-data (graphql-multipart-request-spec) to the lab uploadFile mutation |
 
 Extras beyond the PDF: engine fingerprinting (error shapes,
-response headers, `__typename` behaviour — a best-guess family, or
-"unknown" when it cannot tell); query complexity/cost estimation
+response headers, `__typename` behaviour, error extensions.code —
+a best-guess family, or "unknown" when it cannot tell; the report
+says plainly that it is a best guess, never certain); query complexity/cost estimation
 (fields × (depth+1) + aliases, reported next to the server's
 answer); schema snapshot + `--diff` against a previous run;
 per-finding severity + hardening score + grade (start 100, −25
@@ -67,7 +71,7 @@ python run.py setup        # first time only (venv + requests; the probe
                            # falls back to urllib without it)
 python run.py lab vulnerable   # start the lab API (port 4000)
 python run.py probe http://127.0.0.1:4000/graphql --token lab-token-alice
-python run.py test         # the 173 step-test checks
+python run.py test         # the 217 step-test checks
 python run.py doctor       # check the setup
 python run.py menu         # the numbered menu
 ```
@@ -157,10 +161,10 @@ in one place. `--no-color` strips every colour code.
 
 | File | What it is |
 |---|---|
-| `gqlprobe.py` | The probe (16 probes, CLI + menu + doctor) |
+| `gqlprobe.py` | The probe (19 probes, CLI + menu + doctor) |
 | `lab_api.py` | The lab GraphQL server (stdlib only, 3 configs) |
-| `test_gqlprobe.py` | The 8 build-plan step tests (173 checks) |
-| `wordlist.txt` | The curated field-name wordlist (393 names) |
+| `test_gqlprobe.py` | The 8 build-plan step tests + Step 9 for the v1.2 probes (217 checks) |
+| `wordlist.txt` | The curated field-name wordlist (1373 names, organised by area) |
 | `run.py` / `run.bat` / `run.sh` | Cross-platform launchers |
 | `requirements.txt` | `requests` (optional — urllib fallback) |
 | `RESEARCH_CLI_TOOLS.md` | Research: graphql-cop, Clairvoyance, graphw00f, InQL, gqlmap/batchql |
@@ -173,5 +177,6 @@ in one place. `--no-color` strips every colour code.
 
 | Version | What changed |
 |---|---|
+| v1.2 | Zero-limits upgrade: subscription probing (GQ-017, HTTP + websocket), persisted-query / APQ probing (GQ-018), multipart file-upload probing (GQ-019); wordlist expanded 393 → 1373 names; fingerprinting covers more engines (graphql-ruby, Hot Chocolate, graphql-java, Hasura) and reads error extensions.code, still labelled a best guess; the lab gained a Subscription type, an uploadFile mutation and APQ/upload handling, and was itself probed against the public demo endpoint countries.trevorblades.com (see DEMO.md). Vulnerable lab still 0/100 F (now 19 findings), hardened still 90/100 A (1 finding, GQ-014), partial still 30/100 F. 217 step-test checks pass. |
 | v1.1 | Text-only change: added an explicit authorized-use responsibility disclaimer — in the banner, in every generated report (text header and JSON `disclaimer` field) and in the README. No detection logic, rule, finding, score or behaviour changed. 173 step-test checks pass. |
 | v1.0 | First release. All 6 PDF must-haves + all 3 stretch items + the beyond-PDF extras (bypasses, alias/dup/directive, fingerprinting, IDOR, sensitive-field flagging, cost estimation, GET/CSRF, argument-injection probe, snapshot + diff, score + grade). 173 step-test checks pass. |

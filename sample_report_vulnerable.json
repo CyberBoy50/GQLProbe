@@ -1,22 +1,23 @@
 {
   "tool": "GQLProbe",
-  "version": "1.1",
+  "version": "1.2",
   "author": "CyberBoy50",
   "disclaimer": "DISCLAIMER \u2014 AUTHORIZED USE ONLY. This tool was built for ethical, authorized security testing only. You are using it on your own responsibility. The authors are not responsible for how you use it, or for anything that happens because of your use. Only test systems, code, and data you own or have explicit written permission to test \u2014 testing anything else may be illegal (for example, PECA 2016 in Pakistan).",
-  "endpoint": "http://127.0.0.1:4000/graphql",
-  "probed": "2026-11-25 19:24:17",
+  "endpoint": "http://127.0.0.1:33641/graphql",
+  "probed": "2026-11-25 19:57:45",
   "token_provided": true,
   "engine": "Apollo-like (field-suggestion error shape) \u2014 lab build (Server header says so)",
   "engine_evidence": [
-    "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0",
-    "error shape: Apollo-style 'Did you mean'"
+    "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.1",
+    "error shape: Apollo-style 'Did you mean'",
+    "best guess only \u2014 error shapes and headers are evidence, never proof of the engine"
   ],
   "score": 0,
   "grade": "F",
   "counts": {
     "critical": 4,
-    "high": 8,
-    "medium": 3,
+    "high": 10,
+    "medium": 4,
     "low": 1
   },
   "findings": [
@@ -24,7 +25,7 @@
       "code": "GQ-001",
       "name": "Introspection exposed",
       "severity": "critical",
-      "evidence": "Introspection returned the full schema (10 types) with NO token \u2014 anyone on the internet can read it.",
+      "evidence": "Introspection returned the full schema (12 types) with NO token \u2014 anyone on the internet can read it.",
       "fix": "Disable introspection in production (and block __schema and __type for anonymous users)."
     },
     {
@@ -115,7 +116,7 @@
       "code": "GQ-014",
       "name": "GET-based queries (CSRF angle)",
       "severity": "medium",
-      "evidence": "GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4000/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.",
+      "evidence": "GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:33641/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.",
       "fix": "Accept GraphQL only over POST with a JSON body, or require a CSRF token / custom header on GET."
     },
     {
@@ -124,6 +125,27 @@
       "severity": "high",
       "evidence": "Sensitive field exposed: passwordHash returned without a token: string[38 chars]",
       "fix": "Never expose password hashes (or secrets/tokens) through the API \u2014 remove the field from the schema, or gate it behind an admin-only resolver."
+    },
+    {
+      "code": "GQ-017",
+      "name": "Subscriptions supported",
+      "severity": "high",
+      "evidence": "Subscriptions supported: HTTP subscription returns event data \u2014 a live event stream is an unauthenticated push channel and a denial-of-service shape (one client, many open streams).",
+      "fix": "Disable subscriptions unless the API needs them; require authentication before the subscription is accepted, and cap concurrent subscriptions per client."
+    },
+    {
+      "code": "GQ-018",
+      "name": "Persisted queries accepted (APQ)",
+      "severity": "medium",
+      "evidence": "Persisted queries accepted (APQ): the hash-only request was answered PersistedQueryNotFound (the server looked the hash up) and the hash+query request registered and executed \u2014 clients can run queries by hash alone, which bypasses any inspection that reads the query text.",
+      "fix": "Disable APQ unless clients need it; if it is needed, allow only hashes registered at deploy time, and apply the same depth / complexity / auth checks to persisted queries as to plain ones."
+    },
+    {
+      "code": "GQ-019",
+      "name": "File upload accepted",
+      "severity": "high",
+      "evidence": "File upload accepted: the multipart upload executed and returned object[2 keys] \u2014 an upload endpoint is a classic attack surface (stored content, parsing, size).",
+      "fix": "Disable file uploads unless the API needs them; validate the file type and size server-side, store uploads outside the web root, and require authentication for the upload mutation."
     },
     {
       "code": "GQ-016",
@@ -136,11 +158,11 @@
   "probes": {
     "introspection": {
       "verdict": "EXPOSED (anonymous)",
-      "evidence": "Full schema (10 types) without a token",
+      "evidence": "Full schema (12 types) without a token",
       "details": {
         "authenticated": {
           "exposed": true,
-          "types": 10,
+          "types": 12,
           "errors": [],
           "body": {
             "data": {
@@ -151,7 +173,9 @@
                 "mutationType": {
                   "name": "Mutation"
                 },
-                "subscriptionType": null,
+                "subscriptionType": {
+                  "name": "Subscription"
+                },
                 "types": [
                   {
                     "kind": "OBJECT",
@@ -367,6 +391,52 @@
                         },
                         "isDeprecated": false,
                         "deprecationReason": null
+                      },
+                      {
+                        "name": "uploadFile",
+                        "description": null,
+                        "args": [
+                          {
+                            "name": "file",
+                            "description": null,
+                            "type": {
+                              "kind": "SCALAR",
+                              "name": "String",
+                              "ofType": null
+                            },
+                            "defaultValue": null
+                          }
+                        ],
+                        "type": {
+                          "kind": "SCALAR",
+                          "name": "UploadResult",
+                          "ofType": null
+                        },
+                        "isDeprecated": false,
+                        "deprecationReason": null
+                      }
+                    ],
+                    "inputFields": null,
+                    "interfaces": [],
+                    "enumValues": null,
+                    "possibleTypes": null
+                  },
+                  {
+                    "kind": "OBJECT",
+                    "name": "Subscription",
+                    "description": null,
+                    "fields": [
+                      {
+                        "name": "postAdded",
+                        "description": null,
+                        "args": [],
+                        "type": {
+                          "kind": "OBJECT",
+                          "name": "Post",
+                          "ofType": null
+                        },
+                        "isDeprecated": false,
+                        "deprecationReason": null
                       }
                     ],
                     "inputFields": null,
@@ -529,6 +599,41 @@
                         "type": {
                           "kind": "OBJECT",
                           "name": "User",
+                          "ofType": null
+                        },
+                        "isDeprecated": false,
+                        "deprecationReason": null
+                      }
+                    ],
+                    "inputFields": null,
+                    "interfaces": [],
+                    "enumValues": null,
+                    "possibleTypes": null
+                  },
+                  {
+                    "kind": "OBJECT",
+                    "name": "UploadResult",
+                    "description": null,
+                    "fields": [
+                      {
+                        "name": "filename",
+                        "description": null,
+                        "args": [],
+                        "type": {
+                          "kind": "SCALAR",
+                          "name": "String",
+                          "ofType": null
+                        },
+                        "isDeprecated": false,
+                        "deprecationReason": null
+                      },
+                      {
+                        "name": "size",
+                        "description": null,
+                        "args": [],
+                        "type": {
+                          "kind": "SCALAR",
+                          "name": "Int",
                           "ofType": null
                         },
                         "isDeprecated": false,
@@ -672,7 +777,7 @@
         },
         "anonymous": {
           "exposed": true,
-          "types": 10,
+          "types": 12,
           "errors": [],
           "body": {
             "data": {
@@ -683,7 +788,9 @@
                 "mutationType": {
                   "name": "Mutation"
                 },
-                "subscriptionType": null,
+                "subscriptionType": {
+                  "name": "Subscription"
+                },
                 "types": [
                   {
                     "kind": "OBJECT",
@@ -899,6 +1006,52 @@
                         },
                         "isDeprecated": false,
                         "deprecationReason": null
+                      },
+                      {
+                        "name": "uploadFile",
+                        "description": null,
+                        "args": [
+                          {
+                            "name": "file",
+                            "description": null,
+                            "type": {
+                              "kind": "SCALAR",
+                              "name": "String",
+                              "ofType": null
+                            },
+                            "defaultValue": null
+                          }
+                        ],
+                        "type": {
+                          "kind": "SCALAR",
+                          "name": "UploadResult",
+                          "ofType": null
+                        },
+                        "isDeprecated": false,
+                        "deprecationReason": null
+                      }
+                    ],
+                    "inputFields": null,
+                    "interfaces": [],
+                    "enumValues": null,
+                    "possibleTypes": null
+                  },
+                  {
+                    "kind": "OBJECT",
+                    "name": "Subscription",
+                    "description": null,
+                    "fields": [
+                      {
+                        "name": "postAdded",
+                        "description": null,
+                        "args": [],
+                        "type": {
+                          "kind": "OBJECT",
+                          "name": "Post",
+                          "ofType": null
+                        },
+                        "isDeprecated": false,
+                        "deprecationReason": null
                       }
                     ],
                     "inputFields": null,
@@ -1061,6 +1214,41 @@
                         "type": {
                           "kind": "OBJECT",
                           "name": "User",
+                          "ofType": null
+                        },
+                        "isDeprecated": false,
+                        "deprecationReason": null
+                      }
+                    ],
+                    "inputFields": null,
+                    "interfaces": [],
+                    "enumValues": null,
+                    "possibleTypes": null
+                  },
+                  {
+                    "kind": "OBJECT",
+                    "name": "UploadResult",
+                    "description": null,
+                    "fields": [
+                      {
+                        "name": "filename",
+                        "description": null,
+                        "args": [],
+                        "type": {
+                          "kind": "SCALAR",
+                          "name": "String",
+                          "ofType": null
+                        },
+                        "isDeprecated": false,
+                        "deprecationReason": null
+                      },
+                      {
+                        "name": "size",
+                        "description": null,
+                        "args": [],
+                        "type": {
+                          "kind": "SCALAR",
+                          "name": "Int",
                           "ofType": null
                         },
                         "isDeprecated": false,
@@ -1304,13 +1492,14 @@
     },
     "fingerprint": {
       "verdict": "Apollo-like (field-suggestion error shape) \u2014 lab build (Server header says so)",
-      "evidence": "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0; error shape: Apollo-style 'Did you mean'",
+      "evidence": "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.1; error shape: Apollo-style 'Did you mean'; best guess only \u2014 error shapes and headers are evidence, never proof of the engine",
       "details": {
-        "server": "BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0",
+        "server": "BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.1",
         "powered_by": "",
         "error_shape": [
           "Cannot query field 'usr' on type 'Query'. Did you mean 'user'?"
-        ]
+        ],
+        "extensions_code": null
       }
     },
     "get": {
@@ -1353,12 +1542,39 @@
         ]
       }
     },
+    "subscription": {
+      "verdict": "SUPPORTED",
+      "evidence": "HTTP subscription returns event data",
+      "details": {
+        "http": true,
+        "websocket": [],
+        "tried": [
+          "postAdded"
+        ],
+        "ws_status": 400
+      }
+    },
+    "persisted": {
+      "verdict": "SUPPORTED",
+      "evidence": "Hash-only request: PersistedQueryNotFound; hash+query request: executed (registered).",
+      "details": {
+        "registered": true
+      }
+    },
+    "upload": {
+      "verdict": "ACCEPTED",
+      "evidence": "Multipart upload executed: object[2 keys]",
+      "details": {
+        "filename": "lab-test.txt",
+        "size": 25
+      }
+    },
     "timing": {
       "verdict": "NO RATE LIMIT OBSERVED",
-      "evidence": "Shallow 0.001s, deep 0.002s, 1 vs 100 batch 0.001s vs 0.003s; 20 rapid queries, no 429.",
+      "evidence": "Shallow 0.001s, deep 0.001s, 1 vs 100 batch 0.001s vs 0.003s; 20 rapid queries, no 429.",
       "details": {
         "shallow_1": 0.001,
-        "deep_5": 0.002,
+        "deep_5": 0.001,
         "single": 0.001,
         "batch_100": 0.003,
         "rate_limit": "not observed in 20 rapid requests"
@@ -1366,26 +1582,26 @@
     }
   },
   "timings": {
-    "introspection_authenticated": 0.004,
-    "introspection_anonymous": 0.003,
-    "depth_1": 0.002,
-    "depth_2": 0.002,
+    "introspection_authenticated": 0.003,
+    "introspection_anonymous": 0.002,
+    "depth_1": 0.001,
+    "depth_2": 0.001,
     "depth_3": 0.002,
     "depth_5": 0.002,
-    "depth_8": 0.002,
-    "depth_10": 0.002,
+    "depth_8": 0.001,
+    "depth_10": 0.001,
     "depth_15": 0.002,
     "depth_20": 0.002,
     "depth_30": 0.002,
-    "depth_50": 0.003,
-    "batch_10": 0.002,
+    "depth_50": 0.002,
+    "batch_10": 0.001,
     "batch_50": 0.002,
     "batch_100": 0.003,
-    "alias": 0.003,
+    "alias": 0.002,
     "duplication": 0.002,
-    "directive": 0.002,
+    "directive": 0.001,
     "timing_shallow_1": 0.001,
-    "timing_deep_5": 0.002,
+    "timing_deep_5": 0.001,
     "timing_single": 0.001,
     "timing_batch_100": 0.003
   },
@@ -1402,7 +1618,8 @@
     "mutation_fields": [
       "grantAdmin",
       "ping",
-      "updateProfile"
+      "updateProfile",
+      "uploadFile"
     ],
     "types": [
       "Boolean",
@@ -1413,7 +1630,9 @@
       "Post",
       "Query",
       "String",
+      "Subscription",
       "UpdateProfileInput",
+      "UploadResult",
       "User"
     ],
     "sensitive_fields": [
@@ -1443,7 +1662,9 @@
         "mutationType": {
           "name": "Mutation"
         },
-        "subscriptionType": null,
+        "subscriptionType": {
+          "name": "Subscription"
+        },
         "types": [
           {
             "kind": "OBJECT",
@@ -1659,6 +1880,52 @@
                 },
                 "isDeprecated": false,
                 "deprecationReason": null
+              },
+              {
+                "name": "uploadFile",
+                "description": null,
+                "args": [
+                  {
+                    "name": "file",
+                    "description": null,
+                    "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                    },
+                    "defaultValue": null
+                  }
+                ],
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "UploadResult",
+                  "ofType": null
+                },
+                "isDeprecated": false,
+                "deprecationReason": null
+              }
+            ],
+            "inputFields": null,
+            "interfaces": [],
+            "enumValues": null,
+            "possibleTypes": null
+          },
+          {
+            "kind": "OBJECT",
+            "name": "Subscription",
+            "description": null,
+            "fields": [
+              {
+                "name": "postAdded",
+                "description": null,
+                "args": [],
+                "type": {
+                  "kind": "OBJECT",
+                  "name": "Post",
+                  "ofType": null
+                },
+                "isDeprecated": false,
+                "deprecationReason": null
               }
             ],
             "inputFields": null,
@@ -1821,6 +2088,41 @@
                 "type": {
                   "kind": "OBJECT",
                   "name": "User",
+                  "ofType": null
+                },
+                "isDeprecated": false,
+                "deprecationReason": null
+              }
+            ],
+            "inputFields": null,
+            "interfaces": [],
+            "enumValues": null,
+            "possibleTypes": null
+          },
+          {
+            "kind": "OBJECT",
+            "name": "UploadResult",
+            "description": null,
+            "fields": [
+              {
+                "name": "filename",
+                "description": null,
+                "args": [],
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "String",
+                  "ofType": null
+                },
+                "isDeprecated": false,
+                "deprecationReason": null
+              },
+              {
+                "name": "size",
+                "description": null,
+                "args": [],
+                "type": {
+                  "kind": "SCALAR",
+                  "name": "Int",
                   "ofType": null
                 },
                 "isDeprecated": false,

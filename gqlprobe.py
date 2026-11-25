@@ -102,7 +102,7 @@ except ImportError:  # noqa: BLE001 - requests simply is not installed
     requests = None  # type: ignore[assignment]
     HAVE_REQUESTS = False
 
-VERSION = "1.1"
+VERSION = "1.2"
 AUTHOR = "CyberBoy50"
 DISCLAIMER = ("DISCLAIMER — AUTHORIZED USE ONLY. This tool was built for "
               "ethical, authorized security testing only. You are using it "
@@ -277,6 +277,9 @@ CHECKS = [
     ("GQ-014", "GET-based queries (CSRF angle)", "medium"),
     ("GQ-015", "Argument injection error leak", "high"),
     ("GQ-016", "No rate limiting observed", "low"),
+    ("GQ-017", "Subscriptions supported", "high"),
+    ("GQ-018", "Persisted queries accepted (APQ)", "medium"),
+    ("GQ-019", "File upload accepted", "high"),
 ]
 CHECKS_BY_CODE = {c: (n, s) for c, n, s in CHECKS}
 
@@ -396,6 +399,43 @@ def http_request(url, method="POST", json_body=None, headers=None,
         else:
             req = urllib.request.Request(url, data=data, headers=hdrs,
                                          method=method)
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    status = resp.status
+                    raw = resp.read().decode("utf-8", "replace")
+                    resp_headers = dict(resp.headers)
+            except urllib.error.HTTPError as exc:
+                status = exc.code
+                raw = exc.read().decode("utf-8", "replace")
+                resp_headers = dict(exc.headers)
+    except Exception as exc:  # noqa: BLE001 - network errors are data
+        return 0, {}, None, time.monotonic() - start, "NETWORK ERROR: %s" % exc
+    elapsed = time.monotonic() - start
+    try:
+        body = json.loads(raw) if raw.strip() else None
+    except ValueError:
+        body = None
+    return status, resp_headers, body, elapsed, raw[:500]
+
+
+def http_raw(url, method, body_bytes, headers=None, timeout=10):
+    """One HTTP request with a raw body (multipart upload). Returns
+    the same tuple as http_request."""
+    hdrs = {"Accept": "application/json",
+            "User-Agent": "GQLProbe/%s" % VERSION}
+    if headers:
+        hdrs.update(headers)
+    start = time.monotonic()
+    try:
+        if HAVE_REQUESTS:
+            resp = requests.request(method, url, data=body_bytes,
+                                    headers=hdrs, timeout=timeout)
+            status = resp.status_code
+            raw = resp.text
+            resp_headers = dict(resp.headers)
+        else:
+            req = urllib.request.Request(url, data=body_bytes,
+                                         headers=hdrs, method=method)
             try:
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
                     status = resp.status
@@ -710,7 +750,7 @@ def load_wordlist(path):
 PROBE_NAMES = ["introspection", "bypass", "depth", "batching", "alias",
                "duplication", "directive", "authz", "idor", "guessing",
                "mutation", "timing", "fingerprint", "get", "injection",
-               "sensitive"]
+               "sensitive", "subscription", "persisted", "upload"]
 
 
 class Scan:
@@ -1485,6 +1525,10 @@ class Scan:
                         timing)
 
     # -- probe 13: engine fingerprinting -------------------------------------
+    # A best guess ONLY: error shapes and headers are evidence, never
+    # proof — two engines can print the same message, and any server
+    # can fake a header. The verdict says "unknown" when the evidence
+    # does not support a name, and the evidence always says so.
     def probe_fingerprint(self):
         if not self.wanted("fingerprint"):
             return
@@ -1494,29 +1538,65 @@ class Scan:
         powered = headers.get("X-Powered-By", "")
         _st, _hd, body, _el, _raw = self.post("{ usr { id } }", token=None)
         msgs = error_messages(body)
+        blob = " ".join(msgs)
         evidence = []
         guess = "unknown"
         if server:
             evidence.append("Server header: %s" % server)
         if powered:
             evidence.append("X-Powered-By: %s" % powered)
-        if any("Did you mean" in m for m in msgs):
+        # Extensions on the error (Apollo Server / graphql-yoga carry
+        # extensions.code, e.g. GRAPHQL_VALIDATION_FAILED).
+        ext_code = None
+        if isinstance(body, dict):
+            for e in body.get("errors") or []:
+                if isinstance(e, dict) and isinstance(
+                        e.get("extensions"), dict):
+                    ext_code = e["extensions"].get("code")
+                    break
+        if ext_code:
+            evidence.append("error extensions.code: %s" % ext_code)
+        # Error-message shapes, most specific first. Each one names a
+        # FAMILY ("-like"), never a version — the shape alone cannot
+        # prove which release, or even which engine, for certain.
+        if "Did you mean" in blob:
             guess = "Apollo-like (field-suggestion error shape)"
             evidence.append("error shape: Apollo-style 'Did you mean'")
-        elif any("Cannot query field" in m for m in msgs):
+        elif "Cannot query field" in blob:
             guess = "Apollo-like (error shape)"
             evidence.append("error shape: 'Cannot query field ...'")
+        elif "doesn't exist on type" in blob:
+            guess = "graphql-ruby-like (error shape)"
+            evidence.append("error shape: graphql-ruby "
+                            "doesnt-exist-on-type message")
+        elif "does not exist on type" in blob or (
+                "The field" in blob and "does not exist" in blob):
+            guess = "Hot Chocolate-like (error shape)"
+            evidence.append("error shape: 'The field ... does not exist'")
+        elif "Validation error" in blob:
+            guess = "graphql-java-like (error shape)"
+            evidence.append("error shape: 'Validation error ...'")
+        elif "not found in type" in blob:
+            guess = "Hasura-like (error shape)"
+            evidence.append("error shape: Hasura "
+                            "not-found-in-type message")
+        elif ext_code == "GRAPHQL_VALIDATION_FAILED":
+            guess = "Apollo-like (extensions.code)"
+            evidence.append("error shape: GRAPHQL_VALIDATION_FAILED")
         elif msgs:
             evidence.append("error shape: %s" % msgs[0][:80])
         else:
             evidence.append("no usable error shape")
         if "lab" in server.lower():
             guess += " — lab build (Server header says so)"
+        evidence.append("best guess only — error shapes and headers "
+                        "are evidence, never proof of the engine")
         self.engine = guess
         self.engine_evidence = evidence
         self.record("fingerprint", guess, "; ".join(evidence),
                     {"server": server, "powered_by": powered,
-                     "error_shape": msgs[:1]})
+                     "error_shape": msgs[:1],
+                     "extensions_code": ext_code})
 
     # -- probe 14: GET support (CSRF angle) ----------------------------------
     def probe_get(self):
@@ -1629,6 +1709,290 @@ class Scan:
                         "No sensitive field or role-changing mutation in "
                         "the schema.", detail)
 
+    # -- probe 17: subscriptions -------------------------------------------
+    # Two transports, both tried: a subscription operation over plain
+    # HTTP (a server that answers it is streaming events without a
+    # websocket at all), and a websocket upgrade (graphql-ws /
+    # subscriptions-transport-ws). A 101 Switching Protocols answer
+    # means the websocket transport is live.
+    SUBSCRIPTION_FIELDS = ("postAdded", "messageAdded", "commentAdded",
+                           "notificationAdded", "userJoined")
+
+    def probe_subscription(self):
+        if not self.wanted("subscription"):
+            return
+        http_ok, ws_ok, tried = False, [], []
+        # (a) HTTP: a subscription operation, from the schema when one
+        # is known, else the common event field names.
+        fields = []
+        if self.schema is not None:
+            fields = list(self.schema.get("subscription_fields") or [])
+        if not fields:
+            fields = list(self.SUBSCRIPTION_FIELDS)
+        for field in fields:
+            query = "subscription { %s { __typename } }" % field
+            _st, _hd, body, _el, _raw = self.post(query, token=None)
+            tried.append(field)
+            data = (body or {}).get("data") if isinstance(body, dict) \
+                else None
+            if isinstance(data, dict) and data.get(field) is not None:
+                http_ok = True
+                break
+            if error_messages(body) and any(
+                    "not supported" in m.lower()
+                    for m in error_messages(body)):
+                break
+        # (b) WebSocket upgrade: a raw HTTP Upgrade request. A 101
+        # means the server speaks websocket GraphQL.
+        ws_status = self._ws_upgrade_status()
+        if ws_status == 101:
+            ws_ok = True
+        if http_ok or ws_ok:
+            how = []
+            if http_ok:
+                how.append("HTTP subscription returns event data")
+            if ws_ok:
+                how.append("websocket upgrade answered 101")
+            self.add_finding(
+                "GQ-017",
+                "Subscriptions supported: %s — a live event stream "
+                "is an unauthenticated push channel and a "
+                "denial-of-service shape (one client, many open "
+                "streams)." % "; ".join(how),
+                "Disable subscriptions unless the API needs them; "
+                "require authentication before the subscription is "
+                "accepted, and cap concurrent subscriptions per "
+                "client.")
+            self.record("subscription", "SUPPORTED",
+                        "; ".join(how),
+                        {"http": http_ok, "websocket": ws_ok,
+                         "tried": tried, "ws_status": ws_status})
+        elif ws_status is None:
+            self.record("subscription", "INCONCLUSIVE",
+                        "HTTP subscription refused, but the websocket "
+                        "check could not run (no usable URL).",
+                        {"http": http_ok, "websocket": False,
+                         "tried": tried, "ws_status": ws_status})
+        else:
+            self.record("subscription", "NOT SUPPORTED",
+                        "HTTP subscription refused and the websocket "
+                        "upgrade was refused (HTTP %s, not 101)."
+                        % ws_status,
+                        {"http": False, "websocket": False,
+                         "tried": tried, "ws_status": ws_status})
+
+    def _ws_upgrade_status(self):
+        """Send a websocket Upgrade request to the endpoint and
+        return the HTTP status (101 = websocket live), or None when
+        the URL cannot be used for it. Stdlib only, no websocket
+        library — a handshake is one HTTP request."""
+        import base64
+        import http.client
+        parsed = urllib.parse.urlparse(self.url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            return None
+        key = base64.b64encode(os.urandom(16)).decode("ascii")
+        headers = {"Connection": "Upgrade", "Upgrade": "websocket",
+                   "Sec-WebSocket-Key": key,
+                   "Sec-WebSocket-Version": "13",
+                   "Sec-WebSocket-Protocol": "graphql-ws"}
+        path = parsed.path or "/"
+        if parsed.query:
+            path += "?" + parsed.query
+        # Honour the egress proxy when one is set (requests does this
+        # for the other probes; a raw socket does not): without it the
+        # direct connection can hang or fail even though the endpoint
+        # is reachable, and the verdict flips between runs.
+        proxy = None
+        if parsed.scheme == "https":
+            proxy = (os.environ.get("https_proxy")
+                     or os.environ.get("HTTPS_PROXY"))
+        else:
+            proxy = (os.environ.get("http_proxy")
+                     or os.environ.get("HTTP_PROXY"))
+        no_proxy = os.environ.get("no_proxy", "") + "," \
+            + os.environ.get("NO_PROXY", "")
+        if proxy and parsed.hostname not in [
+                h.strip() for h in no_proxy.split(",") if h.strip()]:
+            pparsed = urllib.parse.urlparse(proxy)
+            if pparsed.hostname:
+                try:
+                    if parsed.scheme == "https":
+                        conn = http.client.HTTPSConnection(
+                            pparsed.hostname,
+                            pparsed.port or 8080, timeout=5)
+                        conn.set_tunnel(parsed.hostname,
+                                        parsed.port or 443)
+                    else:
+                        conn = http.client.HTTPConnection(
+                            pparsed.hostname,
+                            pparsed.port or 8080, timeout=5)
+                        path = "%s://%s%s" % (
+                            parsed.scheme, parsed.hostname, path)
+                    conn.request("GET", path, headers=headers)
+                    resp = conn.getresponse()
+                    status = resp.status
+                    resp.read()
+                    conn.close()
+                    return status
+                except Exception:  # noqa: BLE001 - fall through to direct
+                    pass
+        try:
+            conn_cls = (http.client.HTTPSConnection if parsed.scheme
+                        == "https" else http.client.HTTPConnection)
+            conn = conn_cls(parsed.hostname,
+                            parsed.port or (443 if parsed.scheme == "https"
+                                            else 80),
+                            timeout=5)
+            conn.request("GET", path, headers=headers)
+            resp = conn.getresponse()
+            status = resp.status
+            resp.read()
+            conn.close()
+            return status
+        except Exception:  # noqa: BLE001 - no websocket, verdict below
+            return None
+
+    # -- probe 18: persisted queries (APQ) ----------------------------------
+    # Automatic Persisted Queries: the client sends only a sha256 hash
+    # of the query, no query text. A server that answers
+    # PersistedQueryNotFound understands APQ — it looked the hash up.
+    # Sending the same hash WITH the query then registers it, and the
+    # server runs the query from the hash alone afterwards.
+    def probe_persisted(self):
+        if not self.wanted("persisted"):
+            return
+        import hashlib
+        query = "{ __typename }"
+        digest = hashlib.sha256(query.encode("utf-8")).hexdigest()
+        payload = {"operationName": None, "variables": {},
+                   "extensions": {"persistedQuery": {"version": 1,
+                                                      "sha256Hash": digest}}}
+        _st, _hd, body, _el, _raw = http_request(
+            self.url, "POST", payload,
+            {"Authorization": "Bearer " + self.token} if self.token
+            else {}, self.timeout)
+        msgs = error_messages(body)
+        blob = " ".join(msgs).lower()
+        ext_code = None
+        if isinstance(body, dict):
+            for e in body.get("errors") or []:
+                if isinstance(e, dict) and isinstance(
+                        e.get("extensions"), dict):
+                    ext_code = e["extensions"].get("code")
+                    break
+        not_found = ("persistedquerynotfound" in blob
+                     or ext_code == "PERSISTED_QUERY_NOT_FOUND")
+        if not not_found:
+            if "not supported" in blob or _st in (400, 404, 405):
+                self.record("persisted", "NOT SUPPORTED",
+                            "The hash-only request was refused (%s) — "
+                            "the server does not speak APQ."
+                            % (msgs[:1] or ["HTTP %d" % _st]),
+                            {"hash_only": msgs[:1], "status": _st})
+            else:
+                self.record("persisted", "INCONCLUSIVE",
+                            "The hash-only request gave no clear APQ "
+                            "answer (%s)."
+                            % (msgs[:1] or ["HTTP %d" % _st]),
+                            {"hash_only": msgs[:1], "status": _st})
+            return
+        # Step 2: the same hash WITH the query — registers it.
+        payload2 = dict(payload)
+        payload2["query"] = query
+        _st2, _hd2, body2, _el2, _raw2 = http_request(
+            self.url, "POST", payload2,
+            {"Authorization": "Bearer " + self.token} if self.token
+            else {}, self.timeout)
+        registered = has_data(body2)
+        self.add_finding(
+            "GQ-018",
+            "Persisted queries accepted (APQ): the hash-only request "
+            "was answered PersistedQueryNotFound (the server looked "
+            "the hash up)%s — clients can run queries by hash alone, "
+            "which bypasses any inspection that reads the query text."
+            % (" and the hash+query request registered and executed"
+               if registered else ""),
+            "Disable APQ unless clients need it; if it is needed, "
+            "allow only hashes registered at deploy time, and apply "
+            "the same depth / complexity / auth checks to persisted "
+            "queries as to plain ones.")
+        self.record("persisted", "SUPPORTED",
+                    "Hash-only request: PersistedQueryNotFound; "
+                    "hash+query request: %s."
+                    % ("executed (registered)" if registered
+                       else "refused"),
+                    {"registered": registered})
+
+    # -- probe 19: multipart file upload -------------------------------------
+    # graphql-multipart-request-spec: operations + map + file parts.
+    # The file is a small harmless text file; the probe only asks
+    # whether the server accepts it, never what it does with it.
+    UPLOAD_CONTENT = b"GQLProbe lab upload test\n"
+
+    def probe_upload(self):
+        if not self.wanted("upload"):
+            return
+        boundary = "----GQLProbeUpload%d" % random.randint(0, 0xFFFFFF)
+        operations = json.dumps({
+            "query": "mutation($file: Upload!) { uploadFile(file: $file)"
+                     " { filename size } }",
+            "variables": {"file": None}})
+        mapping = json.dumps({"0": ["variables.file"]})
+        body = b""
+        for name, content, ctype, fname in (
+                ("operations", operations.encode("utf-8"),
+                 "application/json", None),
+                ("map", mapping.encode("utf-8"), "application/json", None),
+                ("0", self.UPLOAD_CONTENT, "text/plain", "lab-test.txt")):
+            body += ("--%s\r\n" % boundary).encode("utf-8")
+            disp = 'Content-Disposition: form-data; name="%s"' % name
+            if fname:
+                disp += '; filename="%s"' % fname
+            body += (disp + "\r\n").encode("utf-8")
+            body += ("Content-Type: %s\r\n\r\n" % ctype).encode("utf-8")
+            body += content + b"\r\n"
+        body += ("--%s--\r\n" % boundary).encode("utf-8")
+        headers = {"Content-Type":
+                   "multipart/form-data; boundary=%s" % boundary}
+        if self.token:
+            headers["Authorization"] = "Bearer " + self.token
+        _st, _hd, resp_body, _el, _raw = http_raw(
+            self.url, "POST", body, headers, self.timeout)
+        data = (resp_body or {}).get("data") if isinstance(resp_body,
+                                                           dict) else None
+        uploaded = (data or {}).get("uploadFile")
+        msgs = error_messages(resp_body)
+        blob = " ".join(msgs).lower()
+        if isinstance(uploaded, dict):
+            self.add_finding(
+                "GQ-019",
+                "File upload accepted: the multipart upload executed "
+                "and returned %s — an upload endpoint is a classic "
+                "attack surface (stored content, parsing, size)."
+                % redact(uploaded),
+                "Disable file uploads unless the API needs them; "
+                "validate the file type and size server-side, store "
+                "uploads outside the web root, and require "
+                "authentication for the upload mutation.")
+            self.record("upload", "ACCEPTED",
+                        "Multipart upload executed: %s" % redact(uploaded),
+                        {"filename": uploaded.get("filename"),
+                         "size": uploaded.get("size")})
+        elif "not supported" in blob or "upload" in blob:
+            self.record("upload", "NOT SUPPORTED",
+                        "The multipart upload was refused: %s"
+                        % (msgs[:1] or ["HTTP %d" % _st]),
+                        {"errors": msgs[:1]})
+        else:
+            self.record("upload", "INCONCLUSIVE",
+                        "No upload mutation answered (%s) — the lab "
+                        "uploadFile mutation is not in this schema, so "
+                        "the probe cannot tell whether uploads are "
+                        "supported here."
+                        % (msgs[:1] or ["HTTP %d" % _st]),
+                        {"errors": msgs[:1]})
+
     # -- orchestration --------------------------------------------------------
     def run(self):
         """Run every wanted probe, in workflow order (introspection
@@ -1649,6 +2013,9 @@ class Scan:
         self.probe_get()
         self.probe_injection()
         self.probe_sensitive()
+        self.probe_subscription()
+        self.probe_persisted()
+        self.probe_upload()
         self.probe_timing()
         self._build_field_map()
         return self
@@ -1914,10 +2281,11 @@ def print_results(scan, min_severity="low"):
         # ("NOT RECOVERABLE" contains "RECOVERABLE").
         bad = ("EXPOSED", "BYPASSED", "NO LIMIT", "ENABLED", "LEAKING",
                "RECOVERABLE", "EXECUTES", "WORKS", "ERROR LEAKED",
-               "FLAGGED IN SCHEMA")
+               "FLAGGED IN SCHEMA", "SUPPORTED", "ACCEPTED")
         good = ("DISABLED", "BLOCKED", "ENFORCED", "CLOSED", "LIMITED",
                 "NOT RECOVERABLE", "AUTH ENFORCED", "CLEAN",
-                "NONE FOUND", "RATE LIMIT PRESENT", "CLEAN (NO SCHEMA)")
+                "NONE FOUND", "RATE LIMIT PRESENT", "CLEAN (NO SCHEMA)",
+                "NOT SUPPORTED")
         if any(verdict == g or verdict.startswith(g + " ")
                or verdict.startswith(g + " (") for g in good):
             mark = f"{C.GRN}+{C.RST}"

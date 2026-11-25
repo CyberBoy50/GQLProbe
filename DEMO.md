@@ -32,11 +32,14 @@ python run.py probe http://127.0.0.1:4000/graphql --token lab-token-alice
  [!] get            WORKS
  [+] injection      CLEAN
  [!] sensitive      EXPOSED
+ [!] subscription   SUPPORTED
+ [!] persisted      SUPPORTED
+ [!] upload         ACCEPTED
 
- Findings: 16 (4 critical, 8 high, 3 medium, 1 low)
+ Findings: 19 (4 critical, 10 high, 4 medium, 1 low)
 ```
 
-Sixteen findings, four of them Critical. The worst three, in
+Nineteen findings, four of them Critical. The worst three, in
 plain words:
 
 - **GQ-001 — introspection exposed.** The full schema (10 types)
@@ -74,6 +77,9 @@ The same command against the hardened config:
  [!] get            WORKS
  [+] injection      CLEAN
  [+] sensitive      CLEAN (NO SCHEMA)
+ [+] subscription   NOT SUPPORTED
+ [+] persisted      NOT SUPPORTED
+ [+] upload         NOT SUPPORTED
 
  Findings: 1 (0 critical, 0 high, 1 medium, 0 low)
   [MEDIUM] [GQ-014] GET-based queries (CSRF angle)
@@ -124,6 +130,67 @@ This is the lab that proves the bypass and guessing probes: the
 front door (introspection) is locked, but the schema still leaks
 through three side doors — and the server even volunteers field
 names when you typo one ("Did you mean 'user'?").
+
+## 4. A real public demo API — countries.trevorblades.com
+
+The lab is a faithful model, but v1.2 also ran the tool against a
+real public GraphQL API built for testing — the countries demo at
+`https://countries.trevorblades.com/` (a public demo service, no
+auth, no account). No other real API was probed. One full run, no
+token:
+
+```
+ RESULTS — score 25/100 (grade F)
+──────────────────────────────────────────────────────────
+ [!] introspection  EXPOSED (anonymous)
+ [?] bypass         NOT NEEDED
+ [+] depth          LIMITED (max depth 5)
+ [+] batching       DISABLED
+ [!] alias          NO LIMIT
+ [!] duplication    NO LIMIT
+ [!] directive      NO LIMIT
+ [+] authz          ENFORCED
+ [?] idor           SKIPPED
+ [?] guessing       NOT NEEDED
+ [+] mutation       AUTH ENFORCED
+ [?] timing         NO RATE LIMIT OBSERVED
+ [?] fingerprint    Apollo-like (error shape)
+ [!] get            WORKS
+ [+] injection      CLEAN
+ [+] sensitive      NONE FOUND
+ [+] subscription   NOT SUPPORTED
+ [+] persisted      NOT SUPPORTED
+ [?] upload         INCONCLUSIVE
+
+ Findings: 6 (1 critical, 1 high, 3 medium, 1 low)
+  [CRITICAL] [GQ-001] Introspection exposed (23 types, no token)
+  [HIGH] [GQ-005] Alias overloading (101 aliases resolved)
+  [MEDIUM] [GQ-006] Field duplication (50 copies accepted)
+  [MEDIUM] [GQ-007] Directive overloading (10 errors for 10 directives)
+  [MEDIUM] [GQ-014] GET-based queries (CSRF angle)
+  [LOW] [GQ-016] No rate limiting observed (20 rapid queries, no 429)
+```
+
+What the real run proved, and what it did not:
+
+- **The probes work on a real engine, not only the lab.** The
+  depth probe found a real limit (max depth 5 — "Query depth limit
+  exceeded"), batching is really disabled, and the fingerprint
+  named the engine family from a real error shape, including the
+  error `extensions.code` (`GRAPHQL_VALIDATION_FAILED`).
+- **The new v1.2 probes gave honest answers on a real API.**
+  Subscriptions and persisted queries are NOT SUPPORTED there —
+  the APQ refusal even says so in its own words ("Batch queries
+  and APQ request are not currently supported for this API").
+  The upload probe is INCONCLUSIVE there, and says why: the lab's
+  `uploadFile` mutation is not in that schema, so the probe cannot
+  tell whether uploads are supported — it does not guess.
+- **The demo is a public demo, not a production audit.** Its
+  introspection is open on purpose (it is a demo dataset), so
+  GQ-001 there is a demo property, not a vulnerability report —
+  and the tool's own rule still stands: never probe a real API
+  without written permission. This endpoint is the one named
+  exception because it exists to be queried.
 
 ## One finding, explained: introspection + depth limits
 

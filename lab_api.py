@@ -16,7 +16,9 @@ probes need them):
   User { id name email role bio passwordHash friends }
   Post { id title body author }
   Query { me user(id:) users post(id:) posts search(q:) admin }
-  Mutation { ping updateProfile(input:) grantAdmin(userId:) }
+  Mutation { ping updateProfile(input:) grantAdmin(userId:)
+             uploadFile(file:) }
+  Subscription { postAdded }
 
   friends is circular (User -> friends -> User) so the depth probe
   has a real cycle to climb. passwordHash and admin are the sensitive
@@ -33,13 +35,21 @@ THREE CONFIGURATIONS (the "prove it twice" design):
     suggestions off, rate limit on (flood guard: >10 identical
     requests in 10s -> 429), auth enforced (me needs a token, admin
     needs the admin role, user(id:) is owner-or-admin only, users
-    needs admin), IDOR closed, mutations need a token.
+    needs admin), IDOR closed, mutations need a token,
+    subscriptions / persisted queries / file uploads all refused.
   partial   — like hardened, BUT suggestions on and the introspection
     guard has the classic holes: __type is not blocked, GET
     introspection is not blocked, and the guard regex only matches
     "__schema {" with a literal space — a newline after __schema
     slips past it (the CVE-2024-37155 shape). This config proves the
-    suggestion-mining and bypass probes.
+    suggestion-mining and bypass probes. Subscriptions, persisted
+    queries and file uploads are refused, as on hardened.
+  APQ (automatic persisted queries): a hash-only request is answered
+  PersistedQueryNotFound, and a hash that matches the query registers
+  it — on the vulnerable config only. Multipart upload
+  (graphql-multipart-request-spec): the uploadFile mutation takes the
+  uploaded file and returns its name + size — on the vulnerable
+  config only (a small harmless text file).
 
 USAGE
   python3 lab_api.py --config vulnerable --port 4000
@@ -61,7 +71,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "1.0"
+VERSION = "1.1"
 AUTHOR = "CyberBoy50"
 
 # ---------------------------------------------------------------------------
@@ -104,7 +114,8 @@ CONFIGS = {
         "idor_open": True, "get_introspection": True,
         "type_bypass": True, "newline_bypass": True,
         "max_aliases": None, "max_duplicates": None,
-        "max_directives": None,
+        "max_directives": None, "subscriptions": True, "apq": True,
+        "upload": True,
     },
     "hardened": {
         "introspection": False, "depth_limit": 5, "batching": False,
@@ -112,6 +123,7 @@ CONFIGS = {
         "idor_open": False, "get_introspection": False,
         "type_bypass": False, "newline_bypass": False,
         "max_aliases": 10, "max_duplicates": 2, "max_directives": 2,
+        "subscriptions": False, "apq": False, "upload": False,
     },
     "partial": {
         "introspection": False, "depth_limit": 5, "batching": False,
@@ -122,6 +134,7 @@ CONFIGS = {
         # introspection (suggestions + the naive guard), not on
         # query-shape abuse.
         "max_aliases": 10, "max_duplicates": 2, "max_directives": 2,
+        "subscriptions": False, "apq": False, "upload": False,
     },
 }
 # Rate-limit flood guard: more than this many IDENTICAL queries inside
@@ -189,6 +202,16 @@ MUTATION_FIELDS = {
     "ping": ("String", []),
     "updateProfile": ("User", [("input", "UpdateProfileInput")]),
     "grantAdmin": ("User", [("userId", "ID!")]),
+    "uploadFile": ("UploadResult", [("file", "String")]),
+}
+# Subscription: one event stream (a new post). UploadResult: the answer
+# a file upload returns (the uploaded file's name + size in bytes).
+SUBSCRIPTION_FIELDS = {
+    "postAdded": ("Post", []),
+}
+UPLOAD_FIELDS = {
+    "filename": "String",
+    "size": "Int",
 }
 USER_FIELDS = {
     "id": "ID!", "name": "String", "email": "String", "role": "String",
@@ -233,8 +256,10 @@ def _schema_types():
     for name, kind, fields in (
             ("Query", "OBJECT", fields_of(QUERY_FIELDS)),
             ("Mutation", "OBJECT", fields_of(MUTATION_FIELDS)),
+            ("Subscription", "OBJECT", fields_of(SUBSCRIPTION_FIELDS)),
             ("User", "OBJECT", fields_of(USER_FIELDS)),
-            ("Post", "OBJECT", fields_of(POST_FIELDS))):
+            ("Post", "OBJECT", fields_of(POST_FIELDS)),
+            ("UploadResult", "OBJECT", fields_of(UPLOAD_FIELDS))):
         types.append({"kind": kind, "name": name, "description": None,
                       "fields": fields, "inputFields": None,
                       "interfaces": [], "enumValues": None,
@@ -257,7 +282,7 @@ def build_introspection():
     return {
         "queryType": {"name": "Query"},
         "mutationType": {"name": "Mutation"},
-        "subscriptionType": None,
+        "subscriptionType": {"name": "Subscription"},
         "types": _schema_types(),
         "directives": [
             {"name": "skip", "description": None, "locations": ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"],
@@ -652,7 +677,9 @@ def query_shape_violation(selection_set, fragments, cfg, _seen=None):
 
 # Fields of each object type, for validation + suggestions.
 TYPE_FIELDS = {"Query": list(QUERY_FIELDS), "Mutation": list(MUTATION_FIELDS),
-               "User": list(USER_FIELDS), "Post": list(POST_FIELDS)}
+               "Subscription": list(SUBSCRIPTION_FIELDS),
+               "User": list(USER_FIELDS), "Post": list(POST_FIELDS),
+               "UploadResult": list(UPLOAD_FIELDS)}
 
 
 def _suggest(word, candidates):
@@ -799,10 +826,18 @@ class Executor:
             elif op["type"] == "mutation":
                 data = self._execute_selection(
                     "Mutation", None, op["selection_set"], doc, variables)
+            elif op["type"] == "subscription":
+                if not self.cfg["subscriptions"]:
+                    return {"data": None, "errors": [
+                        {"message": "Subscriptions are not supported "
+                                    "by this lab API"}]}
+                data = self._execute_selection(
+                    "Subscription", None, op["selection_set"], doc,
+                    variables)
             else:
                 return {"data": None, "errors": [
-                    {"message": "Subscriptions are not supported by "
-                                "this lab API"}]}
+                    {"message": "Unknown operation type %r"
+                                % op["type"]}]}
         except GraphQLError as exc:
             return {"data": None, "errors": [{"message": str(exc)}]}
         if self._errors:
@@ -883,6 +918,16 @@ class Executor:
             return self._resolve_query(name, args, sub, doc, variables)
         if type_name == "Mutation":
             return self._resolve_mutation(name, args, sub, doc, variables)
+        if type_name == "Subscription":
+            return self._resolve_subscription(name, args, sub, doc,
+                                              variables)
+        if type_name == "UploadResult":
+            if name in ("filename", "size"):
+                if sub:
+                    raise GraphQLError("Field %r must not have a selection "
+                                       "of subfields" % name)
+                return obj[name]
+            raise GraphQLError("Unknown UploadResult field %r" % name)
         if type_name == "User":
             return self._resolve_user(obj, name, sub, doc, variables)
         if type_name == "Post":
@@ -906,7 +951,7 @@ class Executor:
             elif fname == "mutationType":
                 out[sel["alias"] or fname] = {"name": "Mutation"}
             elif fname == "subscriptionType":
-                out[sel["alias"] or fname] = None
+                out[sel["alias"] or fname] = {"name": "Subscription"}
             elif fname == "types":
                 out[sel["alias"] or fname] = self._types_selection(
                     sel.get("selection_set") or [], doc, variables)
@@ -1114,6 +1159,10 @@ class Executor:
             if isinstance(inp, dict) and "bio" in inp and inp["bio"] is not None:
                 user["bio"] = inp["bio"]
             return self._user_obj(user, sub, doc, variables)
+        if name == "uploadFile":
+            self._need_token("uploadFile")
+            return self._resolve_upload(args.get("file"), sub, doc,
+                                        variables)
         if name == "grantAdmin":
             if self.cfg["auth_enforced"] and not self._is_admin():
                 self._need_token("grantAdmin")
@@ -1125,6 +1174,25 @@ class Executor:
             USERS[uid]["role"] = "admin"
             return self._user_obj(USERS[uid], sub, doc, variables)
         raise GraphQLError("Unknown mutation %r" % name)
+
+    def _resolve_subscription(self, name, args, sub, doc, variables):
+        # A subscription over plain HTTP returns the first event right
+        # away (one post) — enough for the probe to tell "supported"
+        # from "refused" without a websocket.
+        if name == "postAdded":
+            post = POSTS["1"]
+            return self._post_obj(post, sub, doc, variables)
+        raise GraphQLError("Unknown subscription field %r" % name)
+
+    def _resolve_upload(self, file_arg, sub, doc, variables):
+        # The upload resolver: the file argument is the uploaded
+        # content (the handler replaces the Upload variable with the
+        # file bytes). Harmless lab content only — a small text file.
+        content = file_arg if isinstance(file_arg, str) else ""
+        obj = {"filename": "lab-test.txt", "size": len(content)}
+        self._require_sub(sub, "UploadResult", "uploadFile")
+        return self._execute_selection("UploadResult", obj, sub, doc,
+                                       variables)
 
     def _require_sub(self, sub, type_name, field_name):
         if not sub:
@@ -1193,6 +1261,54 @@ class LabState:
             return count > RATE_LIMIT_COUNT
 
 
+def _parse_multipart(body, boundary):
+    """Minimal multipart/form-data parser (stdlib only). Returns a
+    dict: part name -> (filename, content_bytes). Only what the
+    upload probe needs: 'operations', 'map' and the file parts."""
+    parts = {}
+    sep = b"--" + boundary.encode("utf-8", "replace")
+    for chunk in body.split(sep):
+        # Strip only the CRLF that separates parts — never the
+        # content's own trailing newlines (a text file may end in
+        # one, and the size must match what was sent).
+        if chunk.startswith(b"\r\n"):
+            chunk = chunk[2:]
+        if chunk.endswith(b"\r\n"):
+            chunk = chunk[:-2]
+        if not chunk or chunk == b"--":
+            continue
+        if chunk.endswith(b"--"):
+            chunk = chunk[:-2]
+        head, _, payload = chunk.partition(b"\r\n\r\n")
+        if not _:
+            continue
+        headers = head.decode("utf-8", "replace")
+        name = filename = None
+        for line in headers.split("\r\n"):
+            if line.lower().startswith("content-disposition:"):
+                m = re.search(r'name="([^"]+)"', line)
+                if m:
+                    name = m.group(1)
+                m = re.search(r'filename="([^"]*)"', line)
+                if m:
+                    filename = m.group(1)
+        if name:
+            parts[name] = (filename, payload)
+    return parts
+
+
+def _set_nested(obj, path, value):
+    """Set obj['a']['b'] = value for a dotted path like
+    'variables.file' (the graphql-multipart-request-spec map)."""
+    cur = obj
+    keys = path.split(".")
+    for key in keys[:-1]:
+        if key not in cur or not isinstance(cur[key], dict):
+            cur[key] = {}
+        cur = cur[key]
+    cur[keys[-1]] = value
+
+
 def make_handler(state):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -1206,7 +1322,7 @@ def make_handler(state):
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             # A Server header on purpose: the fingerprint probe reads it.
-            self.send_header("Server", "GQLProbe-Lab/1.0")
+            self.send_header("Server", "GQLProbe-Lab/1.1")
             self.end_headers()
             self.wfile.write(body)
 
@@ -1218,7 +1334,32 @@ def make_handler(state):
 
         def _run_one(self, payload, via_get):
             """Run one GraphQL operation object. Returns (status, dict)."""
-            if not isinstance(payload, dict) or "query" not in payload:
+            if not isinstance(payload, dict):
+                return 400, {"errors": [{"message":
+                    "Expected a JSON object with a 'query' field"}]}
+            # Automatic Persisted Queries (APQ): the client sends only
+            # extensions.persistedQuery.sha256Hash, no query text.
+            ext = payload.get("extensions") or {}
+            pq = ext.get("persistedQuery") if isinstance(ext, dict) else None
+            if isinstance(pq, dict) and "sha256Hash" in pq:
+                if not CONFIGS[state.config]["apq"]:
+                    return 200, {"errors": [{"message":
+                        "Persisted queries are not supported"}]}
+                if "query" not in payload:
+                    # Hash without the query: the server looks it up,
+                    # does not know it yet — the classic APQ answer.
+                    return 200, {"errors": [{"message":
+                        "PersistedQueryNotFound"}], "extensions": {
+                        "code": "PERSISTED_QUERY_NOT_FOUND"}}
+                import hashlib
+                digest = hashlib.sha256(
+                    payload["query"].encode("utf-8")).hexdigest()
+                if digest != pq.get("sha256Hash"):
+                    return 200, {"errors": [{"message":
+                        "PersistedQueryNotFound"}], "extensions": {
+                        "code": "PERSISTED_QUERY_NOT_FOUND"}}
+                # Hash matches the query: registered — run it.
+            if "query" not in payload:
                 return 400, {"errors": [{"message":
                     "Expected a JSON object with a 'query' field"}]}
             query = payload["query"]
@@ -1258,6 +1399,10 @@ def make_handler(state):
                     {"query": query, "variables": variables}, via_get=True)
                 self._send_json(status, payload)
                 return
+            ctype = self.headers.get("Content-Type", "")
+            if ctype.startswith("multipart/form-data"):
+                self._handle_multipart(body, ctype)
+                return
             try:
                 data = json.loads(body.decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
@@ -1279,6 +1424,44 @@ def make_handler(state):
             status, payload = self._run_one(data, via_get=False)
             self._send_json(status, payload)
 
+        def _handle_multipart(self, body, ctype):
+            """graphql-multipart-request-spec: 'operations' + 'map' +
+            file parts. The map replaces variables.file with the
+            uploaded content, then the operation runs as normal."""
+            m = re.search(r"boundary=([^;\s]+)", ctype)
+            if not m:
+                self._send_json(400, {"errors": [{"message":
+                    "Multipart upload needs a boundary"}]})
+                return
+            parts = _parse_multipart(body, m.group(1).strip('"'))
+            if "operations" not in parts or "map" not in parts:
+                self._send_json(400, {"errors": [{"message":
+                    "Multipart upload needs 'operations' and 'map'"}]})
+                return
+            try:
+                operations = json.loads(parts["operations"][1].decode(
+                    "utf-8"))
+                mapping = json.loads(parts["map"][1].decode("utf-8"))
+            except ValueError:
+                self._send_json(400, {"errors": [{"message":
+                    "Invalid multipart JSON"}]})
+                return
+            if not CONFIGS[state.config]["upload"]:
+                self._send_json(200, {"errors": [{"message":
+                    "File uploads are not supported"}]})
+                return
+            # Replace each mapped variable with the file content.
+            variables = operations.get("variables") or {}
+            operations["variables"] = variables
+            for part_name, paths in mapping.items():
+                if part_name not in parts:
+                    continue
+                content = parts[part_name][1].decode("utf-8", "replace")
+                for path in paths:
+                    _set_nested(operations, path, content)
+            status, payload = self._run_one(operations, via_get=False)
+            self._send_json(status, payload)
+
         def do_POST(self):
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
@@ -1295,7 +1478,7 @@ def print_config(config):
     print("GQLProbe lab API — config: %s" % config)
     for key in ("introspection", "depth_limit", "batching",
                 "suggestions", "rate_limit", "auth_enforced",
-                "idor_open"):
+                "idor_open", "subscriptions", "apq", "upload"):
         print("  %-14s: %s" % (key, cfg[key]))
     print("  tokens: lab-token-alice (user 1), lab-token-bob (user 2), "
           "lab-token-admin (user 3, admin)")

@@ -1,10 +1,10 @@
-GQLProbe v1.1 — GraphQL Security Tester
+GQLProbe v1.2 — GraphQL Security Tester
 by CyberBoy50 — AUTHORIZED USE ONLY
 ==========================================================
 DISCLAIMER — AUTHORIZED USE ONLY. This tool was built for ethical, authorized security testing only. You are using it on your own responsibility. The authors are not responsible for how you use it, or for anything that happens because of your use. Only test systems, code, and data you own or have explicit written permission to test — testing anything else may be illegal (for example, PECA 2016 in Pakistan).
 
-Endpoint: http://127.0.0.1:4001/graphql
-Probed: 2026-11-25 19:24:17
+Endpoint: http://127.0.0.1:49765/graphql
+Probed: 2026-11-25 19:57:46
 Token: provided (15 chars, masked)
 Engine: Apollo-like (error shape) — lab build (Server header says so)
 Score: 90/100 (grade A) | Findings: 1 (0 critical, 0 high, 1 medium, 0 low)
@@ -12,10 +12,10 @@ Score: 90/100 (grade A) | Findings: 1 (0 critical, 0 high, 1 medium, 0 low)
 Findings (1)
 ----------------------------------------------------------
   [MEDIUM] [GQ-014] GET-based queries (CSRF angle)
-      Evidence: GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4001/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.
+      Evidence: GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:49765/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.
       Fix: Accept GraphQL only over POST with a JSON body, or require a CSRF token / custom header on GET.
 
-Probes (16)
+Probes (19)
 ----------------------------------------------------------
   introspection  DISABLED
       Introspection refused with and without a token: ['Introspection is disabled']
@@ -40,15 +40,21 @@ Probes (16)
   mutation       AUTH ENFORCED
       No mutation executed without a token.
   timing         RATE LIMIT PRESENT
-      Shallow 0.001s, deep 0.000s, 1 vs 100 batch 0.001s vs 0.001s; rate limit kicked in at request 11/20.
+      Shallow 0.001s, deep 0.000s, 1 vs 100 batch 0.001s vs 0.002s; rate limit kicked in at request 11/20.
   fingerprint    Apollo-like (error shape) — lab build (Server header says so)
-      Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0; error shape: 'Cannot query field ...'
+      Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.1; error shape: 'Cannot query field ...'; best guess only — error shapes and headers are evidence, never proof of the engine
   get            WORKS
       The cheapest query executes over GET.
   injection      CLEAN
       Quoted arguments returned clean results — no database error leaked.
   sensitive      CLEAN (NO SCHEMA)
       No schema to flag (introspection is off), and the passwordHash spot-check returned nothing without a token. A full check needs the schema — see the introspection probe.
+  subscription   NOT SUPPORTED
+      HTTP subscription refused and the websocket upgrade was refused (HTTP 400, not 101).
+  persisted      NOT SUPPORTED
+      The hash-only request was refused (['Persisted queries are not supported']) — the server does not speak APQ.
+  upload         NOT SUPPORTED
+      The multipart upload was refused: ['File uploads are not supported']
 
 Field-level auth map (unauthenticated)
 ----------------------------------------------------------
@@ -61,18 +67,18 @@ Field-level auth map (unauthenticated)
 
 Timing (seconds)
 ----------------------------------------------------------
-  alias                  0.002
-  batch_10               0.001
+  alias                  0.003
+  batch_10               0.002
   depth_1                0.001
   depth_2                0.001
-  depth_3                0.001
+  depth_3                0.002
   depth_5                0.001
-  depth_8                0.001
-  directive              0.001
+  depth_8                0.002
+  directive              0.002
   duplication            0.002
   introspection_anonymous 0.002
-  introspection_authenticated 0.005
-  timing_batch_100       0.001
+  introspection_authenticated 0.002
+  timing_batch_100       0.002
   timing_shallow_1       0.001
   timing_single          0.001
 
