@@ -1,0 +1,5 @@
+# GQLProbe needs nothing installed to probe — the probe uses
+# requests when it is there and falls back to urllib (stdlib) when
+# it is not. requests is listed here so `python run.py setup`
+# installs the preferred client. The LAB server is stdlib only.
+requests

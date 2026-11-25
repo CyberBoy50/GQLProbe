@@ -1,0 +1,139 @@
+GQLProbe v1.0 — GraphQL Security Tester
+by CyberBoy50 — AUTHORIZED USE ONLY
+==========================================================
+Endpoint: http://127.0.0.1:4471/graphql
+Probed: 2026-11-25 19:04:33
+Token: provided (15 chars, masked)
+Engine: Apollo-like (field-suggestion error shape) — lab build (Server header says so)
+Score: 0/100 (grade F) | Findings: 16 (4 critical, 8 high, 3 medium, 1 low)
+
+Findings (16)
+----------------------------------------------------------
+  [CRITICAL] [GQ-001] Introspection exposed
+      Evidence: Introspection returned the full schema (10 types) with NO token — anyone on the internet can read it.
+      Fix: Disable introspection in production (and block __schema and __type for anonymous users).
+  [HIGH] [GQ-003] No depth limit
+      Evidence: The API answered a depth-50 query (cost ~2601) and never refused — no depth limit was found up to depth 50.
+      Fix: Enforce a query-depth limit (5–10 is typical) before the query reaches the engine.
+  [HIGH] [GQ-004] Batching enabled
+      Evidence: Array batching works: one request with 100 queries returned 100 responses — a rate-limit bypass and a DoS amplifier.
+      Fix: Disable array batching, or cap the batch size (10 is a common limit) and count batched operations against the rate limit.
+  [HIGH] [GQ-005] Alias overloading
+      Evidence: Alias overloading works: one query with 101 aliases returned data for the last alias (a100) — the engine resolved 101 copies of the same field.
+      Fix: Limit the number of aliases per query (and dedupe identical fields before execution).
+  [MEDIUM] [GQ-006] Field duplication
+      Evidence: Field duplication accepted: the same field 50 times in one selection set was executed without complaint.
+      Fix: Deduplicate identical fields before execution, and count duplicates towards the complexity limit.
+  [MEDIUM] [GQ-007] Directive overloading
+      Evidence: Directive overloading accepted: one field with 10 unknown directives executed without complaint.
+      Fix: Limit the number of directives per query, and reject unknown directives instead of ignoring them.
+  [HIGH] [GQ-008] Field returns data without auth
+      Evidence: Field 'me' returns data with NO token: object[3 keys]
+      Fix: Enforce authorization on 'me' — check the token before the resolver runs, not after.
+  [HIGH] [GQ-008] Field returns data without auth
+      Evidence: Field 'admin' returns data with NO token: string[21 chars]
+      Fix: Enforce authorization on 'admin' — check the token before the resolver runs, not after.
+  [HIGH] [GQ-008] Field returns data without auth
+      Evidence: Field 'user' returns data with NO token: object[3 keys]
+      Fix: Enforce authorization on 'user' — check the token before the resolver runs, not after.
+  [HIGH] [GQ-008] Field returns data without auth
+      Evidence: Field 'users' returns data with NO token: list[3 items]
+      Fix: Enforce authorization on 'users' — check the token before the resolver runs, not after.
+  [CRITICAL] [GQ-009] IDOR — another user's object
+      Evidence: IDOR: the scan token (user 1) fetched ANOTHER user's object: user 2; user 3
+      Fix: Scope object access to the owner (or an admin) — check the token's user id against the requested id in the resolver.
+  [CRITICAL] [GQ-011] Mutation without auth
+      Evidence: Mutation 'ping' executes with NO token.
+      Fix: Require authentication for every mutation — mutations change state, queries only read it.
+  [CRITICAL] [GQ-011] Mutation without auth
+      Evidence: Mutation 'updateProfile' executes with NO token.
+      Fix: Require authentication for every mutation — mutations change state, queries only read it.
+  [MEDIUM] [GQ-014] GET-based queries (CSRF angle)
+      Evidence: GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4471/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.
+      Fix: Accept GraphQL only over POST with a JSON body, or require a CSRF token / custom header on GET.
+  [HIGH] [GQ-013] Sensitive field exposed
+      Evidence: Sensitive field exposed: passwordHash returned without a token: string[38 chars]
+      Fix: Never expose password hashes (or secrets/tokens) through the API — remove the field from the schema, or gate it behind an admin-only resolver.
+  [LOW] [GQ-016] No rate limiting observed
+      Evidence: No rate limiting observed: 20 identical queries in a row all answered (no 429, no slowdown). Absence of evidence is not proof — but nothing throttled the flood.
+      Fix: Add per-client rate limiting (and count batched operations against it).
+
+Probes (16)
+----------------------------------------------------------
+  introspection  EXPOSED (anonymous)
+      Full schema (10 types) without a token
+  bypass         NOT NEEDED
+      Introspection is already open — there is nothing to bypass.
+  depth          NO LIMIT
+      Answered up to depth 50 (max tried); no refusal
+  batching       ENABLED
+      One request executed 100 queries
+  alias          NO LIMIT
+      101 aliases resolved
+  duplication    NO LIMIT
+      50 duplicate fields accepted
+  directive      NO LIMIT
+      10 directives on one field accepted
+  authz          LEAKING (me, admin, user, users)
+      Fields answering without a token: me, admin, user, users
+  idor           LEAKING
+      user 2; user 3
+  guessing       NOT NEEDED
+      Introspection is open — the schema is already known, guessing adds nothing.
+  mutation       EXECUTES WITHOUT AUTH
+      Mutations running without a token: ping, updateProfile
+  timing         NO RATE LIMIT OBSERVED
+      Shallow 0.002s, deep 0.002s, 1 vs 100 batch 0.002s vs 0.003s; 20 rapid queries, no 429.
+  fingerprint    Apollo-like (field-suggestion error shape) — lab build (Server header says so)
+      Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0; error shape: Apollo-style 'Did you mean'
+  get            WORKS
+      The cheapest query executes over GET.
+  injection      CLEAN
+      Quoted arguments returned clean results — no database error leaked.
+  sensitive      EXPOSED
+      passwordHash returned without a token: string[38 chars]
+
+Schema (from introspection)
+----------------------------------------------------------
+  Query fields (7): admin, me, post, posts, search, user, users
+  Mutation fields (3): grantAdmin, ping, updateProfile
+  Types (10): Boolean, Float, ID, Int, Mutation, Post, Query, String, UpdateProfileInput, User
+  Sensitive fields: Query.admin, Mutation.grantAdmin, User.passwordHash
+  Role-changing mutations: grantAdmin
+
+Field-level auth map (unauthenticated)
+----------------------------------------------------------
+  admin          answers (data)
+  me             answers (data)
+  post           answers (data)
+  posts          answers (data)
+  search         answers (data)
+  user           answers (data)
+  users          answers (data)
+
+Timing (seconds)
+----------------------------------------------------------
+  alias                  0.002
+  batch_10               0.001
+  batch_100              0.003
+  batch_50               0.002
+  depth_1                0.002
+  depth_10               0.001
+  depth_15               0.001
+  depth_2                0.001
+  depth_20               0.001
+  depth_3                0.001
+  depth_30               0.001
+  depth_5                0.001
+  depth_50               0.002
+  depth_8                0.001
+  directive              0.002
+  duplication            0.002
+  introspection_anonymous 0.003
+  introspection_authenticated 0.005
+  timing_batch_100       0.003
+  timing_deep_5          0.002
+  timing_shallow_1       0.002
+  timing_single          0.002
+
+Rule for use: only probe GraphQL APIs you own or have written permission to test.

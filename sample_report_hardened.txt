@@ -1,0 +1,77 @@
+GQLProbe v1.0 — GraphQL Security Tester
+by CyberBoy50 — AUTHORIZED USE ONLY
+==========================================================
+Endpoint: http://127.0.0.1:4472/graphql
+Probed: 2026-11-25 19:04:35
+Token: provided (15 chars, masked)
+Engine: Apollo-like (error shape) — lab build (Server header says so)
+Score: 90/100 (grade A) | Findings: 1 (0 critical, 0 high, 1 medium, 0 low)
+
+Findings (1)
+----------------------------------------------------------
+  [MEDIUM] [GQ-014] GET-based queries (CSRF angle)
+      Evidence: GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4472/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.
+      Fix: Accept GraphQL only over POST with a JSON body, or require a CSRF token / custom header on GET.
+
+Probes (16)
+----------------------------------------------------------
+  introspection  DISABLED
+      Introspection refused with and without a token: ['Introspection is disabled']
+  bypass         BLOCKED
+      All bypasses refused (tried: __type, GET, newline, fragment)
+  depth          LIMITED (max depth 5)
+      Refused past depth 5: Query depth 8 exceeds maximum 5
+  batching       DISABLED
+      Array batching refused (a single error object, not an array).
+  alias          LIMITED
+      The alias bomb was refused: ['Too many aliases in one query (101 > 10)']
+  duplication    LIMITED
+      Duplicate fields refused: ["Field '__typename' repeated 50 times in one selection set (max 2)"]
+  directive      LIMITED
+      Directives refused with one error: ["Too many directives on field '__typename' (10 > 2)"]
+  authz          ENFORCED
+      No protected field answered without a token.
+  idor           CLOSED
+      Other users' objects were refused.
+  guessing       NOT RECOVERABLE
+      Guessing found 2 public fields, no suggestions leaked and no protected field confirmed.
+  mutation       AUTH ENFORCED
+      No mutation executed without a token.
+  timing         RATE LIMIT PRESENT
+      Shallow 0.001s, deep 0.000s, 1 vs 100 batch 0.002s vs 0.001s; rate limit kicked in at request 11/20.
+  fingerprint    Apollo-like (error shape) — lab build (Server header says so)
+      Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0; error shape: 'Cannot query field ...'
+  get            WORKS
+      The cheapest query executes over GET.
+  injection      CLEAN
+      Quoted arguments returned clean results — no database error leaked.
+  sensitive      CLEAN (NO SCHEMA)
+      No schema to flag (introspection is off), and the passwordHash spot-check returned nothing without a token. A full check needs the schema — see the introspection probe.
+
+Field-level auth map (unauthenticated)
+----------------------------------------------------------
+  admin          refused (auth)
+  me             refused (auth)
+  posts          answers (data)
+  search         answers (data)
+  user           refused (auth)
+  users          refused (auth)
+
+Timing (seconds)
+----------------------------------------------------------
+  alias                  0.002
+  batch_10               0.001
+  depth_1                0.001
+  depth_2                0.001
+  depth_3                0.001
+  depth_5                0.001
+  depth_8                0.001
+  directive              0.001
+  duplication            0.001
+  introspection_anonymous 0.002
+  introspection_authenticated 0.005
+  timing_batch_100       0.001
+  timing_shallow_1       0.001
+  timing_single          0.002
+
+Rule for use: only probe GraphQL APIs you own or have written permission to test.

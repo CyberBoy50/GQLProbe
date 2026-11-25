@@ -1,0 +1,242 @@
+{
+  "tool": "GQLProbe",
+  "version": "1.0",
+  "author": "CyberBoy50",
+  "endpoint": "http://127.0.0.1:4472/graphql",
+  "probed": "2026-11-25 19:04:36",
+  "token_provided": true,
+  "engine": "Apollo-like (error shape) \u2014 lab build (Server header says so)",
+  "engine_evidence": [
+    "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0",
+    "error shape: 'Cannot query field ...'"
+  ],
+  "score": 90,
+  "grade": "A",
+  "counts": {
+    "critical": 0,
+    "high": 0,
+    "medium": 1,
+    "low": 0
+  },
+  "findings": [
+    {
+      "code": "GQ-014",
+      "name": "GET-based queries (CSRF angle)",
+      "severity": "medium",
+      "evidence": "GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4472/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.",
+      "fix": "Accept GraphQL only over POST with a JSON body, or require a CSRF token / custom header on GET."
+    }
+  ],
+  "probes": {
+    "introspection": {
+      "verdict": "DISABLED",
+      "evidence": "Introspection refused with and without a token: ['Introspection is disabled']",
+      "details": {
+        "authenticated": {
+          "exposed": false,
+          "types": 0,
+          "errors": [
+            "Introspection is disabled"
+          ],
+          "body": {
+            "data": null,
+            "errors": [
+              {
+                "message": "Introspection is disabled"
+              }
+            ]
+          }
+        },
+        "anonymous": {
+          "exposed": false,
+          "types": 0,
+          "errors": [
+            "Introspection is disabled"
+          ],
+          "body": {
+            "data": null,
+            "errors": [
+              {
+                "message": "Introspection is disabled"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "bypass": {
+      "verdict": "BLOCKED",
+      "evidence": "All bypasses refused (tried: __type, GET, newline, fragment)",
+      "details": {
+        "worked": [],
+        "tried": [
+          "__type",
+          "GET",
+          "newline",
+          "fragment"
+        ]
+      }
+    },
+    "depth": {
+      "verdict": "LIMITED (max depth 5)",
+      "evidence": "Refused past depth 5: Query depth 8 exceeds maximum 5",
+      "details": {
+        "deepest": 5,
+        "limit": "Query depth 8 exceeds maximum 5"
+      }
+    },
+    "batching": {
+      "verdict": "DISABLED",
+      "evidence": "Array batching refused (a single error object, not an array).",
+      "details": {
+        "max_batch": 0
+      }
+    },
+    "alias": {
+      "verdict": "LIMITED",
+      "evidence": "The alias bomb was refused: ['Too many aliases in one query (101 > 10)']",
+      "details": {
+        "aliases": 101
+      }
+    },
+    "duplication": {
+      "verdict": "LIMITED",
+      "evidence": "Duplicate fields refused: [\"Field '__typename' repeated 50 times in one selection set (max 2)\"]",
+      "details": {
+        "duplicates": 50
+      }
+    },
+    "directive": {
+      "verdict": "LIMITED",
+      "evidence": "Directives refused with one error: [\"Too many directives on field '__typename' (10 > 2)\"]",
+      "details": {
+        "directives": 10
+      }
+    },
+    "authz": {
+      "verdict": "ENFORCED",
+      "evidence": "No protected field answered without a token.",
+      "details": {
+        "leaked": [],
+        "field_map": {
+          "admin": "refused (auth)",
+          "me": "refused (auth)",
+          "posts": "answers (data)",
+          "search": "answers (data)",
+          "user": "refused (auth)",
+          "users": "refused (auth)"
+        }
+      }
+    },
+    "idor": {
+      "verdict": "CLOSED",
+      "evidence": "Other users' objects were refused.",
+      "details": {
+        "own": "1",
+        "leaked": []
+      }
+    },
+    "guessing": {
+      "verdict": "NOT RECOVERABLE",
+      "evidence": "Guessing found 2 public fields, no suggestions leaked and no protected field confirmed.",
+      "details": {
+        "discovered": [
+          "posts",
+          "search"
+        ],
+        "gated": [
+          "admin",
+          "me",
+          "user",
+          "users"
+        ],
+        "suggested": []
+      }
+    },
+    "mutation": {
+      "verdict": "AUTH ENFORCED",
+      "evidence": "No mutation executed without a token.",
+      "details": {
+        "ping": {
+          "with_token": true,
+          "without_token": false,
+          "with_errors": [],
+          "without_errors": [
+            "Authentication required to access ping"
+          ]
+        },
+        "updateProfile": {
+          "with_token": true,
+          "without_token": false,
+          "with_errors": [],
+          "without_errors": [
+            "Authentication required to access updateProfile"
+          ]
+        }
+      }
+    },
+    "fingerprint": {
+      "verdict": "Apollo-like (error shape) \u2014 lab build (Server header says so)",
+      "evidence": "Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0; error shape: 'Cannot query field ...'",
+      "details": {
+        "server": "BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0",
+        "powered_by": "",
+        "error_shape": [
+          "Cannot query field 'usr' on type 'Query'"
+        ]
+      }
+    },
+    "get": {
+      "verdict": "WORKS",
+      "evidence": "The cheapest query executes over GET.",
+      "details": {
+        "method": "GET"
+      }
+    },
+    "injection": {
+      "verdict": "CLEAN",
+      "evidence": "Quoted arguments returned clean results \u2014 no database error leaked.",
+      "details": {
+        "leaked": []
+      }
+    },
+    "sensitive": {
+      "verdict": "CLEAN (NO SCHEMA)",
+      "evidence": "No schema to flag (introspection is off), and the passwordHash spot-check returned nothing without a token. A full check needs the schema \u2014 see the introspection probe.",
+      "details": {
+        "sensitive_fields": [],
+        "role_mutations": [],
+        "leaked": []
+      }
+    },
+    "timing": {
+      "verdict": "RATE LIMIT PRESENT",
+      "evidence": "Shallow 0.001s, deep 0.000s, 1 vs 100 batch 0.001s vs 0.001s; rate limit kicked in at request 11/20.",
+      "details": {
+        "shallow_1": 0.001,
+        "deep_5": null,
+        "single": 0.001,
+        "batch_100": 0.001,
+        "rate_limit": "present (first 429 at request 11/20)"
+      }
+    }
+  },
+  "timings": {
+    "introspection_authenticated": 0.004,
+    "introspection_anonymous": 0.002,
+    "depth_1": 0.001,
+    "depth_2": 0.001,
+    "depth_3": 0.002,
+    "depth_5": 0.002,
+    "depth_8": 0.001,
+    "batch_10": 0.001,
+    "alias": 0.002,
+    "duplication": 0.002,
+    "directive": 0.002,
+    "timing_shallow_1": 0.001,
+    "timing_single": 0.001,
+    "timing_batch_100": 0.001
+  },
+  "schema": null,
+  "schema_raw": null
+}
