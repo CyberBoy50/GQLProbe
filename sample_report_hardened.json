@@ -1,9 +1,10 @@
 {
   "tool": "GQLProbe",
-  "version": "1.0",
+  "version": "1.1",
   "author": "CyberBoy50",
-  "endpoint": "http://127.0.0.1:4472/graphql",
-  "probed": "2026-11-25 19:04:36",
+  "disclaimer": "DISCLAIMER \u2014 AUTHORIZED USE ONLY. This tool was built for ethical, authorized security testing only. You are using it on your own responsibility. The authors are not responsible for how you use it, or for anything that happens because of your use. Only test systems, code, and data you own or have explicit written permission to test \u2014 testing anything else may be illegal (for example, PECA 2016 in Pakistan).",
+  "endpoint": "http://127.0.0.1:4001/graphql",
+  "probed": "2026-11-25 19:24:18",
   "token_provided": true,
   "engine": "Apollo-like (error shape) \u2014 lab build (Server header says so)",
   "engine_evidence": [
@@ -23,7 +24,7 @@
       "code": "GQ-014",
       "name": "GET-based queries (CSRF angle)",
       "severity": "medium",
-      "evidence": "GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4472/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.",
+      "evidence": "GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4001/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.",
       "fix": "Accept GraphQL only over POST with a JSON body, or require a CSRF token / custom header on GET."
     }
   ],
@@ -211,31 +212,31 @@
     },
     "timing": {
       "verdict": "RATE LIMIT PRESENT",
-      "evidence": "Shallow 0.001s, deep 0.000s, 1 vs 100 batch 0.001s vs 0.001s; rate limit kicked in at request 11/20.",
+      "evidence": "Shallow 0.005s, deep 0.000s, 1 vs 100 batch 0.002s vs 0.005s; rate limit kicked in at request 11/20.",
       "details": {
-        "shallow_1": 0.001,
+        "shallow_1": 0.005,
         "deep_5": null,
-        "single": 0.001,
-        "batch_100": 0.001,
+        "single": 0.002,
+        "batch_100": 0.005,
         "rate_limit": "present (first 429 at request 11/20)"
       }
     }
   },
   "timings": {
-    "introspection_authenticated": 0.004,
-    "introspection_anonymous": 0.002,
-    "depth_1": 0.001,
-    "depth_2": 0.001,
-    "depth_3": 0.002,
+    "introspection_authenticated": 0.05,
+    "introspection_anonymous": 0.005,
+    "depth_1": 0.004,
+    "depth_2": 0.004,
+    "depth_3": 0.003,
     "depth_5": 0.002,
-    "depth_8": 0.001,
-    "batch_10": 0.001,
+    "depth_8": 0.002,
+    "batch_10": 0.002,
     "alias": 0.002,
-    "duplication": 0.002,
-    "directive": 0.002,
-    "timing_shallow_1": 0.001,
-    "timing_single": 0.001,
-    "timing_batch_100": 0.001
+    "duplication": 0.003,
+    "directive": 0.005,
+    "timing_shallow_1": 0.005,
+    "timing_single": 0.002,
+    "timing_batch_100": 0.005
   },
   "schema": null,
   "schema_raw": null

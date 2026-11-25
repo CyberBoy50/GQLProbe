@@ -1,9 +1,10 @@
 {
   "tool": "GQLProbe",
-  "version": "1.0",
+  "version": "1.1",
   "author": "CyberBoy50",
-  "endpoint": "http://127.0.0.1:4471/graphql",
-  "probed": "2026-11-25 19:04:33",
+  "disclaimer": "DISCLAIMER \u2014 AUTHORIZED USE ONLY. This tool was built for ethical, authorized security testing only. You are using it on your own responsibility. The authors are not responsible for how you use it, or for anything that happens because of your use. Only test systems, code, and data you own or have explicit written permission to test \u2014 testing anything else may be illegal (for example, PECA 2016 in Pakistan).",
+  "endpoint": "http://127.0.0.1:4000/graphql",
+  "probed": "2026-11-25 19:24:17",
   "token_provided": true,
   "engine": "Apollo-like (field-suggestion error shape) \u2014 lab build (Server header says so)",
   "engine_evidence": [
@@ -114,7 +115,7 @@
       "code": "GQ-014",
       "name": "GET-based queries (CSRF angle)",
       "severity": "medium",
-      "evidence": "GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4471/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.",
+      "evidence": "GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4000/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.",
       "fix": "Accept GraphQL only over POST with a JSON body, or require a CSRF token / custom header on GET."
     },
     {
@@ -1354,20 +1355,20 @@
     },
     "timing": {
       "verdict": "NO RATE LIMIT OBSERVED",
-      "evidence": "Shallow 0.001s, deep 0.001s, 1 vs 100 batch 0.001s vs 0.002s; 20 rapid queries, no 429.",
+      "evidence": "Shallow 0.001s, deep 0.002s, 1 vs 100 batch 0.001s vs 0.003s; 20 rapid queries, no 429.",
       "details": {
         "shallow_1": 0.001,
-        "deep_5": 0.001,
+        "deep_5": 0.002,
         "single": 0.001,
-        "batch_100": 0.002,
+        "batch_100": 0.003,
         "rate_limit": "not observed in 20 rapid requests"
       }
     }
   },
   "timings": {
     "introspection_authenticated": 0.004,
-    "introspection_anonymous": 0.002,
-    "depth_1": 0.003,
+    "introspection_anonymous": 0.003,
+    "depth_1": 0.002,
     "depth_2": 0.002,
     "depth_3": 0.002,
     "depth_5": 0.002,
@@ -1376,17 +1377,17 @@
     "depth_15": 0.002,
     "depth_20": 0.002,
     "depth_30": 0.002,
-    "depth_50": 0.002,
+    "depth_50": 0.003,
     "batch_10": 0.002,
     "batch_50": 0.002,
     "batch_100": 0.003,
-    "alias": 0.002,
+    "alias": 0.003,
     "duplication": 0.002,
-    "directive": 0.001,
+    "directive": 0.002,
     "timing_shallow_1": 0.001,
-    "timing_deep_5": 0.001,
+    "timing_deep_5": 0.002,
     "timing_single": 0.001,
-    "timing_batch_100": 0.002
+    "timing_batch_100": 0.003
   },
   "schema": {
     "query_fields": [

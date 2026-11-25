@@ -1,8 +1,10 @@
-GQLProbe v1.0 — GraphQL Security Tester
+GQLProbe v1.1 — GraphQL Security Tester
 by CyberBoy50 — AUTHORIZED USE ONLY
 ==========================================================
-Endpoint: http://127.0.0.1:4471/graphql
-Probed: 2026-11-25 19:04:33
+DISCLAIMER — AUTHORIZED USE ONLY. This tool was built for ethical, authorized security testing only. You are using it on your own responsibility. The authors are not responsible for how you use it, or for anything that happens because of your use. Only test systems, code, and data you own or have explicit written permission to test — testing anything else may be illegal (for example, PECA 2016 in Pakistan).
+
+Endpoint: http://127.0.0.1:4000/graphql
+Probed: 2026-11-25 19:24:16
 Token: provided (15 chars, masked)
 Engine: Apollo-like (field-suggestion error shape) — lab build (Server header says so)
 Score: 0/100 (grade F) | Findings: 16 (4 critical, 8 high, 3 medium, 1 low)
@@ -49,7 +51,7 @@ Findings (16)
       Evidence: Mutation 'updateProfile' executes with NO token.
       Fix: Require authentication for every mutation — mutations change state, queries only read it.
   [MEDIUM] [GQ-014] GET-based queries (CSRF angle)
-      Evidence: GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4471/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.
+      Evidence: GET-based queries work: the same query runs over GET (curl 'http://127.0.0.1:4000/graphql?query={%20__typename%20}'). If this API ever uses cookie auth, that is a CSRF vector.
       Fix: Accept GraphQL only over POST with a JSON body, or require a CSRF token / custom header on GET.
   [HIGH] [GQ-013] Sensitive field exposed
       Evidence: Sensitive field exposed: passwordHash returned without a token: string[38 chars]
@@ -83,7 +85,7 @@ Probes (16)
   mutation       EXECUTES WITHOUT AUTH
       Mutations running without a token: ping, updateProfile
   timing         NO RATE LIMIT OBSERVED
-      Shallow 0.002s, deep 0.002s, 1 vs 100 batch 0.002s vs 0.003s; 20 rapid queries, no 429.
+      Shallow 0.002s, deep 0.001s, 1 vs 100 batch 0.002s vs 0.003s; 20 rapid queries, no 429.
   fingerprint    Apollo-like (field-suggestion error shape) — lab build (Server header says so)
       Server header: BaseHTTP/0.6 Python/3.12.3, GQLProbe-Lab/1.0; error shape: Apollo-style 'Did you mean'
   get            WORKS
@@ -113,26 +115,26 @@ Field-level auth map (unauthenticated)
 
 Timing (seconds)
 ----------------------------------------------------------
-  alias                  0.002
-  batch_10               0.001
-  batch_100              0.003
-  batch_50               0.002
+  alias                  0.003
+  batch_10               0.003
+  batch_100              0.006
+  batch_50               0.003
   depth_1                0.002
-  depth_10               0.001
-  depth_15               0.001
-  depth_2                0.001
-  depth_20               0.001
-  depth_3                0.001
-  depth_30               0.001
-  depth_5                0.001
+  depth_10               0.002
+  depth_15               0.004
+  depth_2                0.004
+  depth_20               0.003
+  depth_3                0.004
+  depth_30               0.002
+  depth_5                0.002
   depth_50               0.002
-  depth_8                0.001
+  depth_8                0.002
   directive              0.002
   duplication            0.002
-  introspection_anonymous 0.003
-  introspection_authenticated 0.005
+  introspection_anonymous 0.004
+  introspection_authenticated 0.006
   timing_batch_100       0.003
-  timing_deep_5          0.002
+  timing_deep_5          0.001
   timing_shallow_1       0.002
   timing_single          0.002
 

@@ -20,7 +20,11 @@ and Linux.
 > **AUTHORIZED USE ONLY** — only probe GraphQL APIs you own or have
 > written permission to test. Probing someone else's API without
 > permission is unauthorized access (Prevention of Electronic Crimes
-> Act, 2016, Pakistan). The repo ships a lab API (`lab_api.py`) with
+> Act, 2016, Pakistan).
+>
+> DISCLAIMER — AUTHORIZED USE ONLY. This tool was built for ethical, authorized security testing only. You are using it on your own responsibility. The authors are not responsible for how you use it, or for anything that happens because of your use. Only test systems, code, and data you own or have explicit written permission to test — testing anything else may be illegal (for example, PECA 2016 in Pakistan).
+>
+> The repo ships a lab API (`lab_api.py`) with
 > three configs — vulnerable, hardened and partial — so you never
 > need a real target to learn the tool.
 
@@ -139,6 +143,8 @@ python3 lab_api.py --config hardened --port 4001
 - The banner says AUTHORIZED USE ONLY. The tool accepts any URL you
   give it, but the docs say lab-only: never probe a real API without
   written permission.
+- The banner, every generated report (text and JSON) and this README
+  carry the same explicit disclaimer: "DISCLAIMER — AUTHORIZED USE ONLY. This tool was built for ethical, authorized security testing only. You are using it on your own responsibility. The authors are not responsible for how you use it, or for anything that happens because of your use. Only test systems, code, and data you own or have explicit written permission to test — testing anything else may be illegal (for example, PECA 2016 in Pakistan)."
 
 ## Theme
 
@@ -167,4 +173,5 @@ in one place. `--no-color` strips every colour code.
 
 | Version | What changed |
 |---|---|
+| v1.1 | Text-only change: added an explicit authorized-use responsibility disclaimer — in the banner, in every generated report (text header and JSON `disclaimer` field) and in the README. No detection logic, rule, finding, score or behaviour changed. 173 step-test checks pass. |
 | v1.0 | First release. All 6 PDF must-haves + all 3 stretch items + the beyond-PDF extras (bypasses, alias/dup/directive, fingerprinting, IDOR, sensitive-field flagging, cost estimation, GET/CSRF, argument-injection probe, snapshot + diff, score + grade). 173 step-test checks pass. |

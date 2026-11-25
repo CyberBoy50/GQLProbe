@@ -85,6 +85,7 @@ import re
 import socket
 import subprocess
 import sys
+import textwrap
 import time
 import urllib.parse
 import urllib.request
@@ -101,8 +102,15 @@ except ImportError:  # noqa: BLE001 - requests simply is not installed
     requests = None  # type: ignore[assignment]
     HAVE_REQUESTS = False
 
-VERSION = "1.0"
+VERSION = "1.1"
 AUTHOR = "CyberBoy50"
+DISCLAIMER = ("DISCLAIMER — AUTHORIZED USE ONLY. This tool was built for "
+              "ethical, authorized security testing only. You are using it "
+              "on your own responsibility. The authors are not responsible "
+              "for how you use it, or for anything that happens because of "
+              "your use. Only test systems, code, and data you own or have "
+              "explicit written permission to test — testing anything else "
+              "may be illegal (for example, PECA 2016 in Pakistan).")
 QUIET = False
 # Theme: RED (user's choice, like PipeSentry). Change ACCENT /
 # ACCENT2 here and the whole tool re-themes.
@@ -238,6 +246,10 @@ def banner():
     print("│  LAB ONLY — never probe a real API without written     │")
     print("│  permission. Unauthorized access is an offence under   │")
     print("│  the Prevention of Electronic Crimes Act, 2016 (PK).   │")
+    print("└" + "─" * 50 + "┘")
+    print("┌" + "─" * 50 + "┐")
+    for _line in textwrap.wrap(DISCLAIMER, width=46):
+        print("│  %-46s  │" % _line)
     print("└" + "─" * 50 + "┘")
     print(f"{C.RST}", end="")
 
@@ -1670,6 +1682,8 @@ def build_report_text(scan, min_severity="low"):
     lines.append("GQLProbe v%s — GraphQL Security Tester" % VERSION)
     lines.append("by %s — AUTHORIZED USE ONLY" % AUTHOR)
     lines.append("=" * 58)
+    lines.append(DISCLAIMER)
+    lines.append("")
     lines.append("Endpoint: %s" % scan.url)
     lines.append("Probed: %s" % scan.started.strftime("%Y-%m-%d %H:%M:%S"))
     lines.append("Token: %s" % mask_token(scan.token))
@@ -1746,6 +1760,7 @@ def build_report_json(scan, min_severity="low"):
     findings = _findings_by_severity(scan.findings, min_severity)
     return {
         "tool": "GQLProbe", "version": VERSION, "author": AUTHOR,
+        "disclaimer": DISCLAIMER,
         "endpoint": scan.url,
         "probed": scan.started.strftime("%Y-%m-%d %H:%M:%S"),
         "token_provided": bool(scan.token),
@@ -1881,6 +1896,8 @@ def print_config(scan, output, as_json, min_severity, snapshot=None,
         info("Snapshot", snapshot)
     if diff:
         info("Diff against", diff)
+    for _line in textwrap.wrap(DISCLAIMER, width=56):
+        print(f"{C.YEL}  {_line}{C.RST}")
     sep(ACCENT, "─")
 
 
